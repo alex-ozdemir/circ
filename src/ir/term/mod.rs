@@ -121,6 +121,13 @@ pub enum Op {
     ///
     /// Takes the modulus.
     UbvToPf(FieldT),
+    /// Outputs 1 iff the input is 0, o.w. 0
+    PfIsZero,
+    /// Outputs a tuple of n field elements that are each 0 or 1
+    /// such that the unsigned bit sum of them is the input.
+    ///
+    /// Undefined if the input is not in range {0, ..., 2^n-1}.
+    PfBitSplit(usize),
 
     /// Integer n-ary operator
     IntNaryOp(IntNaryOp),
@@ -222,6 +229,8 @@ pub const PF_RECIP: Op = Op::PfUnOp(PfUnOp::Recip);
 pub const PF_ADD: Op = Op::PfNaryOp(PfNaryOp::Add);
 /// prime-field multiplication
 pub const PF_MUL: Op = Op::PfNaryOp(PfNaryOp::Mul);
+/// prime-field zero-test (outputs 1 iff input is 0)
+pub const PF_IS_ZERO: Op = Op::PfIsZero;
 /// integer addition
 pub const INT_ADD: Op = Op::IntNaryOp(IntNaryOp::Add);
 /// integer multiplication
@@ -267,6 +276,8 @@ impl Op {
             Op::SbvToFp(_) => Some(1),
             Op::FpToFp(_) => Some(1),
             Op::PfUnOp(_) => Some(1),
+            Op::PfIsZero => Some(1),
+            Op::PfBitSplit(_) => Some(1),
             Op::PfNaryOp(_) => None,
             Op::IntNaryOp(_) => None,
             Op::IntBinPred(_) => Some(2),
@@ -315,6 +326,8 @@ impl Display for Op {
             Op::FpToFp(a) => write!(f, "(fp2fp {})", a),
             Op::PfUnOp(a) => write!(f, "{}", a),
             Op::PfNaryOp(a) => write!(f, "{}", a),
+            Op::PfIsZero => write!(f, "pfiszero"),
+            Op::PfBitSplit(a) => write!(f, "(pfbitsplit {})", a),
             Op::IntNaryOp(a) => write!(f, "{}", a),
             Op::IntBinPred(a) => write!(f, "{}", a),
             Op::UbvToPf(a) => write!(f, "(bv2pf {})", a.modulus()),
@@ -330,7 +343,7 @@ impl Display for Op {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Boolean n-ary operator
 pub enum BoolNaryOp {
     /// Boolean AND
@@ -351,7 +364,7 @@ impl Display for BoolNaryOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Bit-vector binary operator
 pub enum BvBinOp {
     /// Bit-vector (-)
@@ -381,7 +394,7 @@ impl Display for BvBinOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Bit-vector binary predicate
 pub enum BvBinPred {
     // TODO: add overflow predicates.
@@ -418,7 +431,7 @@ impl Display for BvBinPred {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Bit-vector n-ary operator
 pub enum BvNaryOp {
     /// Bit-vector (+)
@@ -445,7 +458,7 @@ impl Display for BvNaryOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Bit-vector unary operator
 pub enum BvUnOp {
     /// Bit-vector bitwise not
@@ -463,7 +476,7 @@ impl Display for BvUnOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Floating-point binary operator
 pub enum FpBinOp {
     /// Floating-point (+)
@@ -496,7 +509,7 @@ impl Display for FpBinOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Floating-point unary operator
 pub enum FpUnOp {
     /// Floating-point unary negation
@@ -520,7 +533,7 @@ impl Display for FpUnOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Floating-point binary predicate
 pub enum FpBinPred {
     /// Floating-point (<=)
@@ -547,7 +560,7 @@ impl Display for FpBinPred {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Floating-point unary predicate
 pub enum FpUnPred {
     /// Is this normal?
@@ -580,7 +593,7 @@ impl Display for FpUnPred {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Finite field n-ary operator
 pub enum PfNaryOp {
     /// Finite field (+)
@@ -598,7 +611,7 @@ impl Display for PfNaryOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Finite field n-ary operator
 pub enum PfUnOp {
     /// Finite field negation
@@ -616,7 +629,7 @@ impl Display for PfUnOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Integer n-ary operator
 pub enum IntNaryOp {
     /// Finite field (+)
@@ -634,7 +647,7 @@ impl Display for IntNaryOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// Integer binary predicate. See [Op::Eq] for equality.
 pub enum IntBinPred {
     /// Integer (<)
@@ -1588,6 +1601,15 @@ fn eval_value(vs: &mut TermMap<Value>, h: &FxHashMap<String, Value>, c: Term) ->
                 },
             )
         }),
+        Op::PfIsZero => Value::Field({
+            let a = vs.get(&c.cs[0]).unwrap().as_pf();
+            if a.is_zero() {
+                a.ty().new_v(1)
+            } else {
+                a.ty().zero()
+            }
+        }),
+        Op::PfBitSplit(_) => todo!(),
         Op::IntBinPred(o) => Value::Bool({
             let a = vs.get(&c.cs[0]).unwrap().as_int();
             let b = vs.get(&c.cs[1]).unwrap().as_int();
@@ -2090,6 +2112,19 @@ impl Computation {
         // drop the top-level tuple term.
         terms.pop();
         terms.into_iter()
+    }
+
+    /// Evaluate this computation. Includes the precomputation.
+    pub fn eval(&self, inputs: &FxHashMap<String, Value>) -> Vec<Value> {
+        let inputs = self.precomputes.eval(inputs);
+        let mut values = TermMap::default();
+        for t in self.terms_postorder() {
+            eval_cached(&t, &inputs, &mut values);
+        }
+        self.outputs
+            .iter()
+            .map(|o| values.get(o).unwrap().clone())
+            .collect()
     }
 }
 

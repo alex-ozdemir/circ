@@ -16,6 +16,7 @@ use crate::ir::term::*;
 pub mod bellman;
 pub mod opt;
 pub mod trans;
+pub mod trans2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// A Rank 1 Constraint System.

@@ -257,6 +257,7 @@ impl<'src> IrInterp<'src> {
             Leaf(Ident, b"+") => Ok(Op::PfNaryOp(PfNaryOp::Add)),
             Leaf(Ident, b"*") => Ok(Op::PfNaryOp(PfNaryOp::Mul)),
             Leaf(Ident, b"pfrecip") => Ok(Op::PfUnOp(PfUnOp::Recip)),
+            Leaf(Ident, b"pfiszero") => Ok(PF_IS_ZERO),
             Leaf(Ident, b"-") => Ok(Op::PfUnOp(PfUnOp::Neg)),
             Leaf(Ident, b"<") => Ok(INT_LT),
             Leaf(Ident, b"<=") => Ok(INT_LE),
