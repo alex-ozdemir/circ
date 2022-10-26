@@ -61,11 +61,15 @@ fn rw_bit_split(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Vec<Te
 }
 
 fn rw_or_helper(ctx: &mut RewriteCtx, mut l_args: Vec<Term>) -> Term {
-    while l_args.len() != 1 {
-        let new = match l_args.len() {
-            0 => ctx.zero().clone(),
-            1 => unreachable!(),
-            2 => bool_neg(term![PF_MUL; bool_neg(l_args[0].clone()), bool_neg(l_args[1].clone())]),
+    loop {
+        match l_args.len() {
+            0 => return ctx.zero().clone(),
+            1 => return l_args.pop().unwrap(),
+            2 => {
+                return bool_neg(
+                    term![PF_MUL; bool_neg(l_args[0].clone()), bool_neg(l_args[1].clone())],
+                )
+            }
             i => {
                 // assumes field is prime
                 let take = if ctx.field().modulus() < &i {
@@ -73,15 +77,15 @@ fn rw_or_helper(ctx: &mut RewriteCtx, mut l_args: Vec<Term>) -> Term {
                 } else {
                     i
                 };
-                bool_neg(rw_is_zero(
+                let new = bool_neg(rw_is_zero(
                     ctx,
                     term(PF_ADD, l_args.drain(i - take..).collect()),
-                ))
+                ));
+
+                l_args.push(new);
             }
         };
-        l_args.push(new);
     }
-    l_args.pop().unwrap()
 }
 
 fn rw_or(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
@@ -105,12 +109,12 @@ fn rw_bool_eq(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
 
 fn rw_xor(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
     let mut l_args = l_args.to_owned();
-    while l_args.len() != 1 {
-        let new = match l_args.len() {
-            0 => ctx.zero().clone(),
-            1 => panic!(),
+    loop {
+        match l_args.len() {
+            0 => return ctx.zero().clone(),
+            1 => return l_args.pop().unwrap(),
             2 => {
-                term![PF_ADD;
+                return term![PF_ADD;
                     l_args[0].clone(),
                     l_args[1].clone(),
                     term![PF_NEG; term![PF_MUL; ctx.f_const(2), l_args[0].clone(), l_args[1].clone()]]]
@@ -125,12 +129,10 @@ fn rw_xor(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
                 let partial_sum = term(PF_ADD, l_args.drain(i - take..).collect());
                 let num_bits = ((partial_sum.cs.len() as f64) + 0.2f64).log2() as usize + 1;
                 let bits = rw_bit_split(ctx, "xor", partial_sum, num_bits);
-                bits.into_iter().next().unwrap()
+                l_args.push(bits.into_iter().next().unwrap());
             }
         };
-        l_args.push(new);
     }
-    l_args.pop().unwrap()
 }
 
 fn rw_not(_ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
