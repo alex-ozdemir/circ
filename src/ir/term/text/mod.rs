@@ -55,6 +55,7 @@ use fxhash::FxHashMap as HashMap;
 mod lex;
 
 use lex::Token;
+use pretty::{Doc, RcDoc};
 use std::fmt::{self, Debug, Display, Formatter, Write};
 use std::str::{from_utf8, FromStr};
 use std::sync::Arc;
@@ -100,6 +101,26 @@ impl<'src> Debug for TokTree<'src> {
             Leaf(_, l) => write!(f, "{}", from_utf8(l).unwrap()),
             List(tts) => f.debug_list().entries(tts).finish(),
         }
+    }
+}
+
+impl<'src> TokTree<'src> {
+    fn to_doc(&self) -> RcDoc<()> {
+        match self {
+            TokTree::Leaf(_, b) => RcDoc::text(std::str::from_utf8(b).unwrap()),
+            TokTree::List(l) => RcDoc::text("(")
+                .append(
+                    RcDoc::intersperse(l.into_iter().map(|i| i.to_doc()), Doc::line())
+                        .nest(1)
+                        .group(),
+                )
+                .append(RcDoc::text(")")),
+        }
+    }
+    fn pp(&self, width: usize) -> String {
+        let mut w = Vec::new();
+        self.to_doc().render(width, &mut w).unwrap();
+        String::from_utf8(w).unwrap()
     }
 }
 
@@ -690,6 +711,12 @@ pub fn serialize_computation(c: &Computation) -> String {
     }
     writeln!(&mut out, "\n)").unwrap();
     out
+}
+
+/// Pretty print `bytes` as an S-expression in `width` columns
+pub fn pp_sexpr(bytes: &[u8], width: usize) -> String {
+    let t = parse_tok_tree(bytes);
+    t.pp(width)
 }
 
 #[cfg(test)]

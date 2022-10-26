@@ -6,7 +6,7 @@ use structopt::clap::arg_enum;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "circ", about = "CirC: the circuit compiler")]
+#[structopt(name = "zk", about = "CirC's ZKP driver")]
 struct Options {
     #[structopt(long, default_value = "P", parse(from_os_str))]
     prover_key: PathBuf,

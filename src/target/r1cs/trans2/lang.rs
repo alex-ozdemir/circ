@@ -1,13 +1,12 @@
 //! IR -> Field lowering language
-#![allow(dead_code)]
-#![allow(missing_docs)]
 
 use crate::ir::term::*;
 use circ_fields::FieldT;
 use fxhash::FxHashMap as HashMap;
 use rug::Integer;
 
-struct RewriteCtx {
+#[derive(Debug)]
+pub struct RewriteCtx {
     assertions: Vec<Term>,
     new_variables: Vec<(Term, String)>,
     field: FieldT,
@@ -28,223 +27,113 @@ impl RewriteCtx {
     /// Given a value, construct a (fresh) variable meant to be set to this value and return it.
     ///
     /// The context is added to the variable name for debugging.
-    fn fresh(&mut self, ctx: &str, value: Term) -> Term {
+    pub fn fresh(&mut self, ctx: &str, value: Term) -> Term {
         let i = self.new_variables.len();
         let name = format!("fresh_pf{}_{}", i, ctx);
         self.new_variables.push((value, name.clone()));
         leaf_term(Op::Var(name, Sort::Field(self.field.clone())))
     }
-    fn assert(&mut self, t: Term) {
+    /// add a new assertion
+    pub fn assert(&mut self, t: Term) {
         self.assertions.push(t);
     }
-    fn field(&self) -> &FieldT {
+    /// the field
+    pub fn field(&self) -> &FieldT {
         &self.field
     }
-    fn zero(&self) -> &Term {
+    /// 0 in the field
+    pub fn zero(&self) -> &Term {
         &self.zero
     }
-    fn one(&self) -> &Term {
+    /// 1 in the field
+    pub fn one(&self) -> &Term {
         &self.one
     }
-    fn f_const<I: Into<Integer>>(&self, i: I) -> Term {
+    /// Create a new field constant
+    pub fn f_const<I: Into<Integer>>(&self, i: I) -> Term {
         pf_lit(self.field().new_v(i.into()))
     }
 }
 
-struct Rule {
-    match_op: OpPattern,
-    match_sort: Sort,
+/// A rewrite rule for lowering IR to a finite-field assertion circuit.
+pub struct Rule {
+    pattern: Pattern,
     fn_: Box<dyn Fn(&mut RewriteCtx, &Term, &[Term]) -> Term>,
 }
 
 impl Rule {
-    fn new<F: Fn(&mut RewriteCtx, &Term, &[Term]) -> Term + 'static>(
-        match_op: OpPattern,
-        match_sort: Sort,
+    /// Create a new rule.
+    pub fn new<F: Fn(&mut RewriteCtx, &Term, &[Term]) -> Term + 'static>(
+        op_pattern: OpPattern,
+        sort: Sort,
         f: F,
     ) -> Self {
         Self {
-            match_op,
-            match_sort,
+            pattern: Pattern(op_pattern, sort),
             fn_: Box::new(f),
         }
     }
-    fn pattern(&self) -> (OpPattern, Sort) {
-        (self.match_op, self.match_sort.clone())
+
+    /// The pattern for this rule
+    pub fn pattern(&self) -> &Pattern {
+        &self.pattern
     }
-}
 
-fn bool_neg(t: Term) -> Term {
-    if let Sort::Field(f) = check(&t) {
-        term![PF_ADD; pf_lit(f.new_v(1)), term![PF_NEG; t]]
-    } else {
-        panic!()
-    }
-}
-
-fn bool_to_field(t: Term, f: &FieldT) -> Term {
-    term![ITE; t, pf_lit(f.new_v(1)), pf_lit(f.new_v(0))]
-}
-
-fn rw_is_zero(ctx: &mut RewriteCtx, x: Term) -> Term {
-    let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
-    // m * x - 1 + is_zero == 0
-    // is_zero * x == 0
-    let m = ctx.fresh(
-        "is_zero_inv",
-        term![Op::Ite; eqz.clone(), ctx.zero().clone(), term![PF_RECIP; x.clone()]],
-    );
-    let is_zero = ctx.fresh(
-        "is_zero",
-        bool_to_field(eqz, ctx.field()),
-    );
-    ctx.assert(term![EQ; term![PF_MUL; m.clone(), x.clone()], bool_neg(is_zero.clone())]);
-    ctx.assert(term![EQ; term![PF_MUL; is_zero.clone(), x], ctx.zero.clone()]);
-    is_zero
-}
-
-fn rw_ensure_bit(ctx: &mut RewriteCtx, b: Term) {
-    let b_minus_one = term![PF_ADD; b.clone(), term![PF_NEG; ctx.one().clone()]];
-    ctx.assert(term![EQ; term![PF_MUL; b_minus_one, b], ctx.zero().clone()]);
-}
-fn rw_bit_split(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Vec<Term> {
-    let x_bv = term![Op::PfToBv(n); x.clone()];
-    let bits: Vec<Term> = (0..n)
-        .map(|i| {
-            ctx.fresh(
-                // We get the right repr here because of infinite two's complement.
-                &format!("{}_bit{}", reason, i),
-                bool_to_field(term![Op::BvBit(i); x_bv.clone()], ctx.field()),
-            )
-        })
-        .collect();
-    let summands: Vec<Term> = bits
-        .iter()
-        .enumerate()
-        .map(|(i, b)| {
-            rw_ensure_bit(ctx, b.clone());
-            term![PF_MUL; pf_lit(ctx.field().new_v(Integer::from(1) << i)), b.clone()]
-        })
-        .collect();
-    ctx.assert(term![EQ; term(PF_ADD, summands), x]);
-    bits
-}
-
-fn rw_or_helper(ctx: &mut RewriteCtx, mut l_args: Vec<Term>) -> Term {
-    loop {
-        match l_args.len() {
-            0 => return pf_lit(ctx.field().new_v(0)),
-            1 => return l_args[0].clone(),
-            2 => {
-                return bool_neg(
-                    term![PF_MUL; bool_neg(l_args[0].clone()), bool_neg(l_args[1].clone())],
-                )
-            }
-            i => {
-                // assumes field is prime
-                let take = if ctx.field().modulus() < &i {
-                    ctx.field().modulus().to_usize().unwrap()
-                } else {
-                    i
-                };
-                let partial_or = bool_neg(rw_is_zero(
-                    ctx,
-                    term(PF_ADD, l_args.drain(i - take..).collect()),
-                ));
-                l_args.push(partial_or);
-            }
-        }
-    }
-}
-
-fn rw_or(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    rw_or_helper(ctx, l_args.to_owned())
-}
-
-fn rw_and(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    bool_neg(rw_or_helper(
-        ctx,
-        l_args.iter().map(|a| bool_neg(a.clone())).collect(),
-    ))
-}
-
-fn rw_bool_eq(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    term![PF_ADD;
-        ctx.one().clone(),
-        term![PF_NEG; l_args[0].clone()],
-        term![PF_NEG; l_args[1].clone()],
-        term![PF_MUL; l_args[0].clone(), l_args[1].clone()]]
-}
-
-fn rw_xor(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    let mut l_args = l_args.to_owned();
-    loop {
-        match l_args.len() {
-            0 => return pf_lit(ctx.field().new_v(0)),
-            1 => return l_args[0].clone(),
-            2 => {
-                return term![PF_ADD;
-                    l_args[0].clone(),
-                    l_args[1].clone(),
-                    term![PF_NEG; term![PF_MUL; pf_lit(ctx.field().new_v(2)), l_args[0].clone(), l_args[1].clone()]]]
-            }
-            i => {
-                // assumes field is prime
-                let take = if ctx.field().modulus() < &i {
-                    ctx.field().modulus().to_usize().unwrap()
-                } else {
-                    i
-                };
-                let partial_sum = term(PF_ADD, l_args.drain(i - take..).collect());
-                let max_sum = partial_sum.cs.len();
-                let num_bits = ((max_sum as f64) + 0.2f64).log2() as usize + 1;
-                let bits = rw_bit_split(ctx, "xor", partial_sum, num_bits);
-                l_args.push(bits[0].clone());
-            }
-        }
-    }
-}
-
-fn rw_not(_ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    bool_neg(l_args[0].clone())
-}
-
-fn rw_implies(_ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    bool_neg(term![PF_MUL; l_args[0].clone(), bool_neg(l_args[1].clone())])
-}
-
-fn rw_var(ctx: &mut RewriteCtx, term: &Term, _l_args: &[Term]) -> Term {
-    if let Op::Var(name, sort) = &term.op {
-        assert_eq!(sort, &Sort::Bool);
-        let f_var = ctx.fresh(&name, bool_to_field(term.clone(), &ctx.field));
-        rw_ensure_bit(ctx, f_var.clone());
-        f_var
-    } else {
-        unreachable!()
-    }
-}
-
-fn rw_const(ctx: &mut RewriteCtx, term: &Term, _l_args: &[Term]) -> Term {
-    if let Op::Const(Value::Bool(b)) = &term.op {
-        if *b {
-            ctx.one().clone()
-        } else {
-            ctx.zero().clone()
-        }
-    } else {
-        unreachable!()
+    /// Create QF_FF formulas that are SAT iff this rule is unsound.
+    pub fn bool_soundness_terms(&self, max_args: usize, field: &FieldT) -> Vec<Term> {
+        assert_eq!(self.pattern().1, Sort::Bool);
+        let vars_s = self.pattern().generate_inputs(max_args);
+        vars_s
+            .into_iter()
+            .map(|vars| {
+                let bool_args: Vec<Term> = vars
+                    .iter()
+                    .map(|n| leaf_term(Op::Var(n.clone(), Sort::Bool)))
+                    .collect();
+                let ff_args: Vec<Term> = vars
+                    .iter()
+                    .map(|n| leaf_term(Op::Var(format!("{}_ff", n), Sort::Field(field.clone()))))
+                    .collect();
+                let mut ctx = RewriteCtx::new(field.clone());
+                for f in &ff_args {
+                    ctx.assert(term![EQ; term![PF_MUL; f.clone(), f.clone()], f.clone()]);
+                }
+                let bool_term = term(self.pattern().get_op(), bool_args.clone());
+                let ff_term = (self.fn_)(&mut ctx, &bool_term, &ff_args);
+                let mut assertions = Vec::new();
+                for (b, f) in bool_args.into_iter().zip(ff_args) {
+                    assertions.push(term![EQ; b, term![EQ; f, ctx.one().clone()]]);
+                }
+                let zero_out = term![EQ; ff_term.clone(), ctx.zero().clone()];
+                let one_out = term![EQ; ff_term.clone(), ctx.one().clone()];
+                let malencoded_out = term![NOT; term![OR; zero_out, one_out.clone()]];
+                let wrong_out = term![NOT; term![EQ; bool_term, one_out]];
+                assertions.extend(ctx.assertions);
+                assertions.push(term![OR; malencoded_out, wrong_out]);
+                term(AND, assertions)
+            })
+            .collect()
     }
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-enum OpPattern {
+/// A pattern for operators
+pub enum OpPattern {
+    /// Any variable.
     Var,
+    /// Any constant.
     Const,
+    /// See [Op::Eq].
     Eq,
+    /// See [Op::Not].
     Not,
+    /// See [Op::Implies].
     Implies,
+    /// See [Op::BoolNaryOp].
     BoolNaryOp(BoolNaryOp),
+    /// See [Op::PfNaryOp].
     PfNaryOp(PfNaryOp),
+    /// See [Op::PfUnOp].
     PfUnOp(PfUnOp),
 }
 
@@ -264,32 +153,56 @@ impl OpPattern {
     }
 }
 
-fn rules() -> Vec<Rule> {
-    use OpPattern as OpP;
-    use Sort::Bool;
-    vec![
-        Rule::new(OpP::Const, Bool, Box::new(rw_const)),
-        Rule::new(OpP::Var, Bool, Box::new(rw_var)),
-        Rule::new(OpP::Eq, Bool, Box::new(rw_bool_eq)),
-        Rule::new(OpP::Not, Bool, Box::new(rw_not)),
-        Rule::new(OpP::Implies, Bool, Box::new(rw_implies)),
-        Rule::new(OpP::BoolNaryOp(BoolNaryOp::Xor), Bool, Box::new(rw_xor)),
-        Rule::new(OpP::BoolNaryOp(BoolNaryOp::Or), Bool, Box::new(rw_or)),
-        Rule::new(OpP::BoolNaryOp(BoolNaryOp::And), Bool, Box::new(rw_and)),
-    ]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+/// A pattern for sorted operators
+pub struct Pattern(pub OpPattern, pub Sort);
+
+impl<'a> From<&'a Term> for Pattern {
+    fn from(t: &'a Term) -> Self {
+        Pattern(OpPattern::from_op(&t.op), check(&t))
+    }
 }
 
-type Pattern = (OpPattern, Sort);
+impl Pattern {
+    fn get_op(&self) -> Op {
+        match self.0 {
+            OpPattern::Var => Op::Var("DUMMY".into(), self.1.clone()),
+            OpPattern::Const => Op::Const(self.1.default_value()),
+            OpPattern::Eq => Op::Eq,
+            OpPattern::Not => Op::Not,
+            OpPattern::Implies => Op::Implies,
+            OpPattern::BoolNaryOp(o) => Op::BoolNaryOp(o),
+            OpPattern::PfUnOp(o) => Op::PfUnOp(o),
+            OpPattern::PfNaryOp(o) => Op::PfNaryOp(o),
+        }
+    }
 
-fn term_pattern(t: &Term) -> Pattern {
-    (OpPattern::from_op(&t.op), check(&t))
+    fn generate_inputs(&self, max_args: usize) -> Vec<Vec<String>> {
+        fn nth_name(mut n: usize) -> String {
+            let mut o = String::new();
+            n += 1;
+            while n > 0 {
+                o.push((b'a' + (n % 26) as u8) as char);
+                n /= 26;
+            }
+            o
+        }
+        if let Some(n_args) = self.get_op().arity() {
+            vec![(0..n_args).map(nth_name).collect()]
+        } else {
+            (1..max_args)
+                .map(|n| (0..n).map(nth_name).collect())
+                .collect()
+        }
+    }
 }
 
-fn apply_rules(rs: Vec<Rule>, field: &FieldT, mut computation: Computation) -> Computation {
+/// Apply some rules to translated a computation into a field.
+pub fn apply_rules(rs: Vec<Rule>, field: &FieldT, mut computation: Computation) -> Computation {
     assert!(computation.outputs.len() == 1);
     let mut rule_table: HashMap<Pattern, Rule> = HashMap::default();
     for r in rs {
-        let prev = rule_table.insert(r.pattern(), r);
+        let prev = rule_table.insert(r.pattern().clone(), r);
         if let Some(p) = prev {
             panic!("Two rules for {:?}", p.pattern())
         }
@@ -297,7 +210,7 @@ fn apply_rules(rs: Vec<Rule>, field: &FieldT, mut computation: Computation) -> C
     let mut rewrite_table: TermMap<Term> = Default::default();
     let mut ctx = RewriteCtx::new(field.clone());
     for t in computation.terms_postorder() {
-        let p = term_pattern(&t);
+        let p = Pattern::from(&t);
         let r = rule_table
             .get(&p)
             .unwrap_or_else(|| panic!("No pattern for pattern {:?}", p));
@@ -315,139 +228,4 @@ fn apply_rules(rs: Vec<Rule>, field: &FieldT, mut computation: Computation) -> C
         computation.extend_precomputation(name, value);
     }
     computation
-}
-
-fn apply(field: &FieldT, computation: Computation) -> Computation {
-    apply_rules(rules(), field, computation)
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::ir::proof::Constraints;
-    use crate::target::r1cs::trans::test::PureBool;
-    use crate::util::field::DFL_T;
-    use quickcheck_macros::quickcheck;
-
-    #[test]
-    fn simple() {
-        let _ = env_logger::builder().is_test(true).try_init();
-        let cs = text::parse_computation(
-            b"
-            (computation
-                (metadata
-                    (P V)
-                    ((a bool) (b bool) (c bool))
-                    ((a P) (b P))
-                )
-                (= (xor a b) c)
-            )
-        ",
-        );
-        let values = text::parse_value_map(
-            b"
-        (let (
-          (a true)
-          (b true)
-          (c false)
-          ) true ; dead
-        )
-        ",
-        );
-        assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
-        let cs2 = apply(&FieldT::FBls12381, cs);
-        assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
-    }
-
-    #[test]
-    fn all_ops() {
-        let _ = env_logger::builder().is_test(true).try_init();
-        let cs = text::parse_computation(
-            b"
-            (computation
-                (metadata
-                    (P V)
-                    ((a bool) (b0 bool) (b1 bool) (b2 bool) (c bool) (d bool))
-                    ((a P) (b P))
-                )
-                (= (xor a (and b0 b1 b2)) (=> c (or (not d) (not d))))
-            )
-        ",
-        );
-        let values = text::parse_value_map(
-            b"
-        (let (
-          (a true)
-          (b0 true)
-          (b1 true)
-          (b2 true)
-          (c true)
-          (d true)
-          ) true ; dead
-        )
-        ",
-        );
-        assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
-        let cs2 = apply(&FieldT::FBls12381, cs);
-        assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
-    }
-
-    #[test]
-    fn or3false() {
-        let _ = env_logger::builder().is_test(true).try_init();
-        let cs = text::parse_computation(
-            b"
-            (computation
-                (metadata () () ())
-                (not (or false false false))
-            )
-        ",
-        );
-        let values = text::parse_value_map(
-            b"
-        (let (
-          ) true ; dead
-        )
-        ",
-        );
-        assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
-        let cs2 = apply(&DFL_T, cs);
-        assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
-    }
-
-    #[test]
-    fn impl_tf() {
-        let _ = env_logger::builder().is_test(true).try_init();
-        let cs = text::parse_computation(
-            b"
-            (computation
-                (metadata () () ())
-                (not (=> true false))
-            )
-        ",
-        );
-        let values = text::parse_value_map(
-            b"
-        (let (
-          ) true ; dead
-        )
-        ",
-        );
-        assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
-        let cs2 = apply(&DFL_T, cs);
-        assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
-    }
-
-    #[quickcheck]
-    fn random_pure_bool(PureBool(t, values): PureBool) {
-        let t = if eval(&t, &values).as_bool() {
-            t
-        } else {
-            term![Op::Not; t]
-        };
-        let cs = Computation::from_constraint_system_parts(vec![t], Vec::new());
-        assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
-        let cs2 = apply(&DFL_T, cs);
-        assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
-    }
 }

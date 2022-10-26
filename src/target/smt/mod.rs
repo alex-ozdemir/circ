@@ -128,7 +128,15 @@ impl Expr2Smt<()> for TermData {
                 write!(w, "(=>")?;
                 true
             }
-            Op::BoolNaryOp(_) | Op::BvBinPred(_) | Op::BvBinOp(_) | Op::BvNaryOp(_) => {
+            Op::BoolNaryOp(BoolNaryOp::Xor | BoolNaryOp::Or) => {
+                write!(w, "({} false", self.op)?;
+                true
+            }
+            Op::BoolNaryOp(BoolNaryOp::And) => {
+                write!(w, "({} true", self.op)?;
+                true
+            }
+            Op::BvBinPred(_) | Op::BvBinOp(_) | Op::BvNaryOp(_) => {
                 write!(w, "({}", self.op)?;
                 true
             }
@@ -309,7 +317,9 @@ impl<'a, Br: ::std::io::BufRead> ModelParser<String, Sort, Value, &'a mut SmtPar
             }
         } else if let Sort::Field(f) = s {
             let int_literal = input.get_sexpr()?;
-            let i = Integer::from_str_radix(int_literal, 10).unwrap();
+            assert_eq!(&int_literal[..2], "#f");
+            let m_idx = int_literal.find('m').unwrap();
+            let i = Integer::from_str_radix(&int_literal[2..m_idx], 10).unwrap();
             Value::Field(f.new_v(i))
         } else if let Sort::Int = s {
             let int_literal = input.get_sexpr()?;
@@ -373,7 +383,7 @@ pub fn check_sat(t: &Term) -> bool {
 
 fn get_model_solver(t: &Term, inc: bool) -> rsmt2::Solver<Parser> {
     let mut solver = make_solver(Parser, true, inc);
-    //solver.path_tee("solver_com").unwrap();
+    solver.path_tee("solver_com").unwrap();
     for c in PostOrderIter::new(t.clone()) {
         if let Op::Var(n, s) = &c.op {
             solver.declare_const(&SmtSymDisp(n), s).unwrap();
