@@ -383,7 +383,7 @@ pub fn check_sat(t: &Term) -> bool {
 
 fn get_model_solver(t: &Term, inc: bool) -> rsmt2::Solver<Parser> {
     let mut solver = make_solver(Parser, true, inc);
-    solver.path_tee("solver_com").unwrap();
+    //solver.path_tee("solver_com").unwrap();
     for c in PostOrderIter::new(t.clone()) {
         if let Op::Var(n, s) = &c.op {
             solver.declare_const(&SmtSymDisp(n), s).unwrap();
