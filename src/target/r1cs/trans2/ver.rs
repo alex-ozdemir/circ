@@ -23,6 +23,15 @@ fn generate_inputs(op: &Op, max_args: usize) -> Vec<Vec<String>> {
     }
 }
 
+/// Given a boolean term and a field term that purportedly encodes it, returns a term that is true
+/// iff the encoding is valid.
+pub fn bool_enc_valid(b: &Term, f: &Term) -> Term {
+    let field = FieldT::from(check(f).as_pf());
+    let f_valid = term![EQ; term![PF_MUL; f.clone(), f.clone()], f.clone()];
+    let f_is_1 = term![EQ; f.clone(), pf_lit(field.new_v(1))];
+    term![AND; f_valid, term![EQ; b.clone(), f_is_1]]
+}
+
 /// Create QF_FF formulas that are SAT iff this rule is unsound.
 pub fn bool_soundness_terms(rule: &Rule, max_args: usize, field: &FieldT) -> Vec<Term> {
     assert_eq!(rule.pattern().1, Sort::Bool);
@@ -30,30 +39,32 @@ pub fn bool_soundness_terms(rule: &Rule, max_args: usize, field: &FieldT) -> Vec
     vars_s
         .into_iter()
         .map(|vars| {
+            let mut assertions = Vec::new();
+
+            // create boolean inputs and term
             let bool_args: Vec<Term> = vars
                 .iter()
                 .map(|n| leaf_term(Op::Var(n.clone(), Sort::Bool)))
                 .collect();
+            let bool_term = term(rule.pattern().get_op(), bool_args.clone());
+
+            // validly encode them
             let ff_args: Vec<Term> = vars
                 .iter()
                 .map(|n| leaf_term(Op::Var(format!("{}_ff", n), Sort::Field(field.clone()))))
                 .collect();
+            for (b, f) in bool_args.iter().zip(&ff_args) {
+                assertions.push(bool_enc_valid(b, f))
+            }
+
+            // apply the lowering rule
             let mut ctx = RewriteCtx::new(field.clone());
-            for f in &ff_args {
-                ctx.assert(term![EQ; term![PF_MUL; f.clone(), f.clone()], f.clone()]);
-            }
-            let bool_term = term(rule.pattern().get_op(), bool_args.clone());
             let ff_term = rule.apply(&mut ctx, &bool_term, &ff_args);
-            let mut assertions = Vec::new();
-            for (b, f) in bool_args.into_iter().zip(ff_args) {
-                assertions.push(term![EQ; b, term![EQ; f, ctx.one().clone()]]);
-            }
-            let zero_out = term![EQ; ff_term.clone(), ctx.zero().clone()];
-            let one_out = term![EQ; ff_term.clone(), ctx.one().clone()];
-            let malencoded_out = term![NOT; term![OR; zero_out, one_out.clone()]];
-            let wrong_out = term![NOT; term![EQ; bool_term, one_out]];
-            assertions.extend(ctx.assertions);
-            assertions.push(term![OR; malencoded_out, wrong_out]);
+            assertions.extend(ctx.assertions); // save the assertions
+
+            // assert that the output is mal-encoded
+            assertions.push(term![NOT; bool_enc_valid(&bool_term, &ff_term)]);
+
             term(AND, assertions)
         })
         .collect()
