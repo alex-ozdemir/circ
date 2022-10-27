@@ -4,6 +4,7 @@ use crate::ir::term::Computation;
 use circ_fields::FieldT;
 
 mod lang;
+mod runtime;
 mod boolean;
 
 pub use lang::{Rule, OpPattern};
@@ -11,7 +12,7 @@ pub use boolean::rules as boolean_rules;
 
 /// Lower
 pub fn apply(field: &FieldT, computation: Computation) -> Computation {
-    lang::apply_rules(boolean::rules(), field, computation)
+    runtime::apply_rules(boolean::rules(), field, computation)
 }
 
 #[cfg(test)]

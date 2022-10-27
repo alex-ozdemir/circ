@@ -2,20 +2,19 @@
 
 use crate::ir::term::*;
 use circ_fields::FieldT;
-use fxhash::FxHashMap as HashMap;
 use rug::Integer;
 
 #[derive(Debug)]
-pub struct RewriteCtx {
-    assertions: Vec<Term>,
-    new_variables: Vec<(Term, String)>,
+pub(super) struct RewriteCtx {
+    pub assertions: Vec<Term>,
+    pub new_variables: Vec<(Term, String)>,
     field: FieldT,
     zero: Term,
     one: Term,
 }
 
 impl RewriteCtx {
-    fn new(field: FieldT) -> Self {
+    pub fn new(field: FieldT) -> Self {
         Self {
             assertions: Vec::new(),
             zero: pf_lit(field.new_v(0)),
@@ -63,7 +62,7 @@ pub struct Rule {
 
 impl Rule {
     /// Create a new rule.
-    pub fn new<F: Fn(&mut RewriteCtx, &Term, &[Term]) -> Term + 'static>(
+    pub(super) fn new<F: Fn(&mut RewriteCtx, &Term, &[Term]) -> Term + 'static>(
         op_pattern: OpPattern,
         sort: Sort,
         f: F,
@@ -77,6 +76,12 @@ impl Rule {
     /// The pattern for this rule
     pub fn pattern(&self) -> &Pattern {
         &self.pattern
+    }
+
+    /// Apply the rule
+    pub(super) fn apply(&self, c: &mut RewriteCtx, t: &Term, l_args: &[Term]) -> Term {
+        debug_assert_eq!(&Pattern::from(t), &self.pattern);
+        (self.fn_)(c, t, l_args)
     }
 
     /// Create QF_FF formulas that are SAT iff this rule is unsound.
@@ -195,37 +200,4 @@ impl Pattern {
                 .collect()
         }
     }
-}
-
-/// Apply some rules to translated a computation into a field.
-pub fn apply_rules(rs: Vec<Rule>, field: &FieldT, mut computation: Computation) -> Computation {
-    assert!(computation.outputs.len() == 1);
-    let mut rule_table: HashMap<Pattern, Rule> = HashMap::default();
-    for r in rs {
-        let prev = rule_table.insert(r.pattern().clone(), r);
-        if let Some(p) = prev {
-            panic!("Two rules for {:?}", p.pattern())
-        }
-    }
-    let mut rewrite_table: TermMap<Term> = Default::default();
-    let mut ctx = RewriteCtx::new(field.clone());
-    for t in computation.terms_postorder() {
-        let p = Pattern::from(&t);
-        let r = rule_table
-            .get(&p)
-            .unwrap_or_else(|| panic!("No pattern for pattern {:?}", p));
-        let args: Vec<Term> =
-            t.cs.iter()
-                .map(|c| rewrite_table.get(c).unwrap().clone())
-                .collect();
-        let new = (r.fn_)(&mut ctx, &t, &args);
-        rewrite_table.insert(t, new);
-    }
-    let o = rewrite_table.get(&computation.outputs[0]).unwrap().clone();
-    ctx.assert(term![EQ; o, ctx.one().clone()]);
-    computation.outputs = vec![term(AND, ctx.assertions)];
-    for (value, name) in ctx.new_variables {
-        computation.extend_precomputation(name, value);
-    }
-    computation
 }
