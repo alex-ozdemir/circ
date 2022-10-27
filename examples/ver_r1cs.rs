@@ -1,6 +1,5 @@
 use circ::ir::term::text::*;
-use circ::target::r1cs::trans2::boolean_rules;
-use circ::target::r1cs::trans2::OpPattern;
+use circ::target::r1cs::trans2 as trans;
 use circ::target::smt::find_model;
 use circ::util::field::DFL_T;
 use structopt::StructOpt;
@@ -19,10 +18,10 @@ fn main() -> Result<(), String> {
         .init();
     let opts = Options::from_args();
 
-    for r in boolean_rules() {
-        if r.pattern().0 != OpPattern::Var {
+    for r in trans::boolean::rules() {
+        if r.pattern().0 != trans::lang::OpPattern::Var {
             println!("Rule for {:?}", r.pattern());
-            for t in r.bool_soundness_terms(opts.max_args, &DFL_T) {
+            for t in trans::ver::bool_soundness_terms(&r, opts.max_args, &DFL_T) {
                 println!("check");
                 if let Some(model) = find_model(&t) {
                     println!("UNSOUND");

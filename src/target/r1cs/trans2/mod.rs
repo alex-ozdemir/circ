@@ -3,12 +3,10 @@
 use crate::ir::term::Computation;
 use circ_fields::FieldT;
 
-mod lang;
+pub mod lang;
+pub mod boolean;
 mod runtime;
-mod boolean;
-
-pub use lang::{Rule, OpPattern};
-pub use boolean::rules as boolean_rules;
+pub mod ver;
 
 /// Lower
 pub fn apply(field: &FieldT, computation: Computation) -> Computation {
