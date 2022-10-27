@@ -33,12 +33,11 @@ pub fn bool_enc_valid(b: &Term, f: &Term) -> Term {
 }
 
 /// Create QF_FF formulas that are SAT iff this rule is unsound.
-pub fn bool_soundness_terms(rule: &Rule, max_args: usize, field: &FieldT) -> Vec<Term> {
+pub fn bool_soundness_terms(rule: &Rule, max_args: usize, field: &FieldT) -> Vec<(Term, Term)> {
     assert_eq!(rule.pattern().1, Sort::Bool);
-    let vars_s = generate_inputs(&rule.pattern().get_op(), max_args);
-    vars_s
-        .into_iter()
-        .map(|vars| {
+    let mut out = Vec::new();
+    for op in rule.pattern().get_ops() {
+        for vars in generate_inputs(&op, max_args) {
             let mut assertions = Vec::new();
 
             // create boolean inputs and term
@@ -46,7 +45,7 @@ pub fn bool_soundness_terms(rule: &Rule, max_args: usize, field: &FieldT) -> Vec
                 .iter()
                 .map(|n| leaf_term(Op::Var(n.clone(), Sort::Bool)))
                 .collect();
-            let bool_term = term(rule.pattern().get_op(), bool_args.clone());
+            let bool_term = term(op.clone(), bool_args.clone());
 
             // validly encode them
             let ff_args: Vec<Term> = vars
@@ -65,7 +64,8 @@ pub fn bool_soundness_terms(rule: &Rule, max_args: usize, field: &FieldT) -> Vec
             // assert that the output is mal-encoded
             assertions.push(term![NOT; bool_enc_valid(&bool_term, &ff_term)]);
 
-            term(AND, assertions)
-        })
-        .collect()
+            out.push((bool_term, term(AND, assertions)))
+        }
+    }
+    out
 }

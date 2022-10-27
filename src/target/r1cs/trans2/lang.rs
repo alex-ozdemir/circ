@@ -141,19 +141,21 @@ impl Pattern {
     /// Get all operators that would match this pattern.
     ///
     /// Panics if there isn't a unique operator.
-    pub fn get_op(&self) -> Op {
+    pub fn get_ops(&self) -> Vec<Op> {
         match self.0 {
             OpPattern::Var => panic!(),
-            //TODO: fix const
-            OpPattern::Const => Op::Const(self.1.default_value()),
-            OpPattern::Eq => Op::Eq,
-            OpPattern::Not => Op::Not,
-            OpPattern::BoolMaj => Op::BoolMaj,
-            OpPattern::Implies => Op::Implies,
-            OpPattern::BoolNaryOp(o) => Op::BoolNaryOp(o),
-            OpPattern::PfUnOp(o) => Op::PfUnOp(o),
-            OpPattern::PfNaryOp(o) => Op::PfNaryOp(o),
+            OpPattern::Const => {
+                let iter = self.1.elems_iter_values();
+                assert!(iter.size_hint().1.is_some(), "Infinite set");
+                iter.map(Op::Const).collect()
+            }
+            OpPattern::Eq => vec![Op::Eq],
+            OpPattern::Not => vec![Op::Not],
+            OpPattern::BoolMaj => vec![Op::BoolMaj],
+            OpPattern::Implies => vec![Op::Implies],
+            OpPattern::BoolNaryOp(o) => vec![Op::BoolNaryOp(o)],
+            OpPattern::PfUnOp(o) => vec![Op::PfUnOp(o)],
+            OpPattern::PfNaryOp(o) => vec![Op::PfNaryOp(o)],
         }
     }
-
 }

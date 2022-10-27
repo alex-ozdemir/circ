@@ -21,18 +21,20 @@ fn main() -> Result<(), String> {
     for r in trans::boolean::rules() {
         if r.pattern().0 != trans::lang::OpPattern::Var {
             println!("Rule for {:?}", r.pattern());
-            for t in trans::ver::bool_soundness_terms(&r, opts.max_args, &DFL_T) {
-                println!("check");
-                if let Some(model) = find_model(&t) {
+            for (t, soundness) in trans::ver::bool_soundness_terms(&r, opts.max_args, &DFL_T) {
+                println!("check: {}", t);
+                if let Some(model) = find_model(&soundness) {
                     println!("UNSOUND");
-                    println!("Formula:\n{}\n", pp_sexpr(serialize_term(&t).as_bytes(), 100));
+                    println!(
+                        "Formula:\n{}\n",
+                        pp_sexpr(serialize_term(&soundness).as_bytes(), 100)
+                    );
                     println!(
                         "Counterexample: {}",
                         serialize_value_map(&model.into_iter().collect())
                     );
                     return Err("UNSOUND".into());
                 }
-                println!("done");
             }
         }
     }

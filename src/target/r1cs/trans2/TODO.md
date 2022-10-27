@@ -1,5 +1,4 @@
 To do:
-* fix boolean constant VC
 * encoding polymorphism
 * encoding trait
 * bit-vector lower
@@ -8,3 +7,4 @@ To do:
 Done:
 * input encoding for booleans
 * boolean majority
+* fix boolean constant VC
