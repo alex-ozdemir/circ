@@ -143,4 +143,27 @@ mod test {
         let cs2 = apply(&DFL_T, cs);
         assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
     }
+
+    #[test]
+    fn maj_ttf() {
+        let _ = env_logger::builder().is_test(true).try_init();
+        let cs = text::parse_computation(
+            b"
+            (computation
+                (metadata () () ())
+                (maj true true false)
+            )
+        ",
+        );
+        let values = text::parse_value_map(
+            b"
+        (let (
+          ) true ; dead
+        )
+        ",
+        );
+        assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
+        let cs2 = apply(&DFL_T, cs);
+        assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
+    }
 }

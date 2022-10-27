@@ -166,6 +166,18 @@ fn rw_const(ctx: &mut RewriteCtx, term: &Term, _l_args: &[Term]) -> Term {
     }
 }
 
+fn rw_maj(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
+    if let [a, b, c] = l_args {
+        // m = ab + bc + ca - 2abc
+        // m = ab + c(b + a - 2ab)
+        let ab = term![PF_MUL; a.clone(), b.clone()];
+        term![PF_ADD; ab.clone(),
+          term![PF_MUL; c.clone(), term![PF_ADD; b.clone(), a.clone(), term![PF_MUL; ctx.f_const(-2), ab]]]]
+    } else {
+        unreachable!()
+    }
+}
+
 /// The boolean -> field rewrite rules.
 pub fn rules() -> Vec<Rule> {
     use OpPattern as OpP;
@@ -175,6 +187,7 @@ pub fn rules() -> Vec<Rule> {
         Rule::new(OpP::Var, Bool, Box::new(rw_var)),
         Rule::new(OpP::Eq, Bool, Box::new(rw_bool_eq)),
         Rule::new(OpP::Not, Bool, Box::new(rw_not)),
+        Rule::new(OpP::BoolMaj, Bool, Box::new(rw_maj)),
         Rule::new(OpP::Implies, Bool, Box::new(rw_implies)),
         Rule::new(OpP::BoolNaryOp(BoolNaryOp::Xor), Bool, Box::new(rw_xor)),
         Rule::new(OpP::BoolNaryOp(BoolNaryOp::Or), Bool, Box::new(rw_or)),

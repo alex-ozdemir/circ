@@ -120,6 +120,16 @@ impl Expr2Smt<()> for TermData {
                 write!(w, "(ite")?;
                 true
             }
+            Op::BoolMaj => {
+                write!(
+                    w,
+                    "(or (and {a} {b}) (and {b} {c}) (and {a} {c}))",
+                    a = SmtDisp(&*self.cs[0]),
+                    b = SmtDisp(&*self.cs[1]),
+                    c = SmtDisp(&*self.cs[2]),
+                )?;
+                false
+            }
             Op::Not => {
                 write!(w, "(not")?;
                 true

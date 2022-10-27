@@ -99,6 +99,8 @@ pub enum OpPattern {
     Not,
     /// See [Op::Implies].
     Implies,
+    /// See [Op::BoolMaj].
+    BoolMaj,
     /// See [Op::BoolNaryOp].
     BoolNaryOp(BoolNaryOp),
     /// See [Op::PfNaryOp].
@@ -114,6 +116,7 @@ impl OpPattern {
             Op::Const(..) => OpPattern::Const,
             Op::Eq => OpPattern::Eq,
             Op::Not => OpPattern::Not,
+            Op::BoolMaj => OpPattern::BoolMaj,
             Op::Implies => OpPattern::Implies,
             Op::BoolNaryOp(b) => OpPattern::BoolNaryOp(*b),
             Op::PfNaryOp(b) => OpPattern::PfNaryOp(*b),
@@ -145,6 +148,7 @@ impl Pattern {
             OpPattern::Const => Op::Const(self.1.default_value()),
             OpPattern::Eq => Op::Eq,
             OpPattern::Not => Op::Not,
+            OpPattern::BoolMaj => Op::BoolMaj,
             OpPattern::Implies => Op::Implies,
             OpPattern::BoolNaryOp(o) => Op::BoolNaryOp(o),
             OpPattern::PfUnOp(o) => Op::PfUnOp(o),
