@@ -1,5 +1,6 @@
 //! Verification machinery
-use super::lang::{RewriteCtx, Rule};
+use super::boolean::Enc;
+use super::lang::{RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 
@@ -33,10 +34,14 @@ pub fn bool_enc_valid(b: &Term, f: &Term) -> Term {
 }
 
 /// Create QF_FF formulas that are SAT iff this rule is unsound.
-pub fn bool_soundness_terms(rule: &Rule, max_args: usize, field: &FieldT) -> Vec<(Term, Term)> {
-    assert_eq!(rule.pattern().1, Sort::Bool);
+pub fn bool_soundness_terms(
+    rule: &Rule<super::boolean::Enc>,
+    max_args: usize,
+    field: &FieldT,
+) -> Vec<(Term, Term)> {
+    assert_eq!(rule.pattern().1, SortPattern::Bool);
     let mut out = Vec::new();
-    for op in rule.pattern().get_ops() {
+    for op in rule.pattern().get_ops(1) {
         for vars in generate_inputs(&op, max_args) {
             let mut assertions = Vec::new();
 
@@ -48,21 +53,26 @@ pub fn bool_soundness_terms(rule: &Rule, max_args: usize, field: &FieldT) -> Vec
             let bool_term = term(op.clone(), bool_args.clone());
 
             // validly encode them
-            let ff_args: Vec<Term> = vars
+            let ff_args: Vec<Enc> = vars
                 .iter()
-                .map(|n| leaf_term(Op::Var(format!("{}_ff", n), Sort::Field(field.clone()))))
+                .map(|n| {
+                    Enc::Bit(leaf_term(Op::Var(
+                        format!("{}_ff", n),
+                        Sort::Field(field.clone()),
+                    )))
+                })
                 .collect();
             for (b, f) in bool_args.iter().zip(&ff_args) {
-                assertions.push(bool_enc_valid(b, f))
+                assertions.push(bool_enc_valid(b, &f.bit()))
             }
 
             // apply the lowering rule
             let mut ctx = RewriteCtx::new(field.clone());
-            let ff_term = rule.apply(&mut ctx, &bool_term, &ff_args);
+            let ff_term = rule.apply(&mut ctx, &bool_term.op, &ff_args.iter().collect::<Vec<_>>());
             assertions.extend(ctx.assertions); // save the assertions
 
             // assert that the output is mal-encoded
-            assertions.push(term![NOT; bool_enc_valid(&bool_term, &ff_term)]);
+            assertions.push(term![NOT; bool_enc_valid(&bool_term, &ff_term.bit())]);
 
             out.push((bool_term, term(AND, assertions)))
         }

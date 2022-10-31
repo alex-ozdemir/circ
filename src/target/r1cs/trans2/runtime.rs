@@ -1,35 +1,136 @@
-use super::lang::{Pattern, RewriteCtx, Rule};
+use super::lang::{Chooser, Conversion, Encoding, Pattern, RewriteCtx, Rule, SortPattern, VarRule};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 
 use fxhash::FxHashMap as HashMap;
+use std::collections::BTreeSet;
 
-/// Apply some rules to translated a computation into a field.
-pub fn apply_rules(rs: Vec<Rule>, field: &FieldT, mut computation: Computation) -> Computation {
-    assert!(computation.outputs.len() == 1);
-    let mut rule_table: HashMap<Pattern, Rule> = HashMap::default();
-    for r in rs {
-        let prev = rule_table.insert(r.pattern().clone(), r);
-        if let Some(p) = prev {
-            panic!("Two rules for {:?}", p.pattern())
+struct Rewriter<E: Encoding> {
+    var_rules: HashMap<SortPattern, VarRule<E>>,
+    rules: HashMap<(Pattern, E::Type), Rule<E>>,
+    convs: HashMap<(E::Type, E::Type), Conversion<E>>,
+    chooser: Chooser<E::Type>,
+    encs: HashMap<(Term, E::Type), E>,
+    types: TermMap<BTreeSet<E::Type>>,
+}
+
+impl<E: Encoding> Rewriter<E> {
+    fn new(
+        var_rules: Vec<VarRule<E>>,
+        rws: Vec<Rule<E>>,
+        convs: Vec<Conversion<E>>,
+        chooser: Chooser<E::Type>,
+    ) -> Self {
+        let mut var_rules_table: HashMap<SortPattern, VarRule<E>> = HashMap::default();
+        for r in var_rules {
+            let prev = var_rules_table.insert(r.sort_pattern(), r);
+            if prev.is_some() {
+                panic!("Two var rules");
+            }
+        }
+        let mut rules_table: HashMap<(Pattern, E::Type), Rule<E>> = HashMap::default();
+        for r in rws {
+            let prev = rules_table.insert((r.pattern().clone(), r.encoding_ty()), r);
+            if let Some(p) = prev {
+                panic!("Two rules for {:?}", p.pattern())
+            }
+        }
+        let mut convs_table: HashMap<(E::Type, E::Type), Conversion<E>> = Default::default();
+        for c in convs {
+            let from = c.from();
+            let to = c.to();
+            let prev = convs_table.insert((from, to), c);
+            if prev.is_some() {
+                panic!("Two conversion rules for {:?} -> {:?}", from, to);
+            }
+        }
+        Self {
+            var_rules: var_rules_table,
+            rules: rules_table,
+            convs: convs_table,
+            chooser,
+            encs: Default::default(),
+            types: Default::default(),
         }
     }
-    let mut rewrite_table: TermMap<Term> = Default::default();
+    fn add(&mut self, t: Term, e: E) {
+        let types = self.types.entry(t.clone()).or_default();
+        if types.insert(e.type_()) {
+            self.encs.insert((t, e.type_()), e);
+        }
+    }
+    #[track_caller]
+    fn get_types(&self, t: &Term) -> &BTreeSet<E::Type> {
+        self.types
+            .get(t)
+            .unwrap_or_else(|| panic!("*No* encoding for term"))
+    }
+    fn get_max_ty(&self, t: &Term) -> E::Type {
+        *self
+            .get_types(t)
+            .iter()
+            .last()
+            .unwrap_or_else(|| panic!("*No* encoding for term"))
+    }
+    fn get_enc(&self, t: &Term, ty: E::Type) -> &E {
+        self.encs.get(&(t.clone(), ty)).unwrap()
+    }
+    fn ensure_enc(&mut self, c: &mut RewriteCtx, t: &Term, ty: E::Type) {
+        if !self.encs.contains_key(&(t.clone(), ty)) {
+            let from_ty = self.get_max_ty(t);
+            let cnv = self
+                .convs
+                .get(&(from_ty, ty))
+                .unwrap_or_else(|| panic!("No conversion"));
+            let e = self.encs.get(&(t.clone(), from_ty)).unwrap();
+            let new_e = cnv.apply(c, e);
+            self.add(t.clone(), new_e);
+        }
+    }
+    fn visit(&mut self, c: &mut RewriteCtx, t: Term) {
+        let new = if let Op::Var(name, sort) = &t.op {
+            let vr = self.var_rules.get(&SortPattern::from(sort)).unwrap();
+            vr.apply(c, name, sort)
+        } else {
+            let p = Pattern::from(&t);
+            let available: Vec<&BTreeSet<E::Type>> =
+                t.cs.iter().map(|c| self.get_types(c)).collect();
+            let ty = (self.chooser)(&t, &available);
+            for child in &t.cs {
+                self.ensure_enc(c, child, ty);
+            }
+            let args: Vec<&E> = t.cs.iter().map(|ch| self.get_enc(ch, ty)).collect();
+            let r = self
+                .rules
+                .get(&(p, ty))
+                .unwrap_or_else(|| panic!("No pattern for pattern {:?} and encoding {:?}", p, ty));
+            r.apply(c, &t.op, &args)
+        };
+        self.add(t, new);
+    }
+}
+
+/// Apply some rules to translated a computation into a field.
+pub fn apply_rules<E: Encoding>(
+    var_rules: Vec<VarRule<E>>,
+    rws: Vec<Rule<E>>,
+    convs: Vec<Conversion<E>>,
+    chooser: Chooser<E::Type>,
+    field: FieldT,
+    mut computation: Computation,
+) -> Computation {
+    assert!(computation.outputs.len() == 1);
+    let mut rewriter = Rewriter::new(var_rules, rws, convs, chooser);
     let mut ctx = RewriteCtx::new(field.clone());
     for t in computation.terms_postorder() {
-        let p = Pattern::from(&t);
-        let r = rule_table
-            .get(&p)
-            .unwrap_or_else(|| panic!("No pattern for pattern {:?}", p));
-        let args: Vec<Term> =
-            t.cs.iter()
-                .map(|c| rewrite_table.get(c).unwrap().clone())
-                .collect();
-        let new = r.apply(&mut ctx, &t, &args);
-        rewrite_table.insert(t, new);
+        rewriter.visit(&mut ctx, t);
     }
-    let o = rewrite_table.get(&computation.outputs[0]).unwrap().clone();
-    ctx.assert(term![EQ; o, ctx.one().clone()]);
+    let ty = rewriter.get_max_ty(&computation.outputs()[0]);
+    let e = rewriter
+        .encs
+        .get(&(computation.outputs()[0].clone(), ty))
+        .unwrap();
+    e.output(&mut ctx);
     computation.outputs = vec![term(AND, ctx.assertions)];
     for (value, name) in ctx.new_variables {
         computation.extend_precomputation(name, value);

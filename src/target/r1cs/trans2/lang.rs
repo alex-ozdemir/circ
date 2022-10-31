@@ -1,11 +1,66 @@
 //! IR -> Field lowering language
 
+use std::cmp::Ord;
+use std::collections::BTreeSet;
+use std::fmt::Debug;
+use std::hash::Hash;
+
 use crate::ir::term::*;
 use circ_fields::FieldT;
 use rug::Integer;
 
+/// The type of an encoding.
+///
+/// Encoding types should be ordered by cost. I.e. earlier types should be cheaper to produce. When
+/// encodings of different types must be converted to a common type, all will be converted to the
+/// cheapest.
+pub trait EncodingType: Copy + Hash + Eq + Debug + Ord {}
+
+/// The encoding itself.
+pub trait Encoding: Clone {
+    /// Types for this encoding.
+    type Type: EncodingType;
+    /// Get the type of this encoding.
+    fn type_(&self) -> Self::Type;
+    /// Output this encoding.
+    fn output(&self, c: &mut RewriteCtx);
+}
+
+/// Chooses an encoding for a term given the available encodings for the arguments.
+pub(super) type Chooser<T> = Box<dyn Fn(&Term, &[&BTreeSet<T>]) -> T>;
+
+/// Encodes an input.
+pub struct VarRule<E: Encoding> {
+    sort_pattern: SortPattern,
+    fn_: Box<dyn Fn(&mut RewriteCtx, &str, &Sort) -> E>,
+}
+
+impl<E: Encoding> VarRule<E> {
+    pub(super) fn new<F: Fn(&mut RewriteCtx, &str, &Sort) -> E + 'static>(
+        sort_pattern: SortPattern,
+        f: F,
+    ) -> Self {
+        Self {
+            sort_pattern,
+            fn_: Box::new(f),
+        }
+    }
+
+    /// Which sorts this rule matches
+    pub fn sort_pattern(&self) -> SortPattern {
+        self.sort_pattern
+    }
+
+    /// Apply the rule
+    pub(super) fn apply(&self, c: &mut RewriteCtx, n: &str, s: &Sort) -> E {
+        (self.fn_)(c, n, s)
+    }
+
+}
+
 #[derive(Debug)]
-pub(super) struct RewriteCtx {
+#[allow(missing_docs)]
+pub struct RewriteCtx {
     pub assertions: Vec<Term>,
     pub new_variables: Vec<(Term, String)>,
     field: FieldT,
@@ -14,6 +69,7 @@ pub(super) struct RewriteCtx {
 }
 
 impl RewriteCtx {
+    /// Create a new context
     pub fn new(field: FieldT) -> Self {
         Self {
             assertions: Vec::new(),
@@ -56,20 +112,30 @@ impl RewriteCtx {
 }
 
 /// A rewrite rule for lowering IR to a finite-field assertion circuit.
-pub struct Rule {
+pub struct Rule<E: Encoding> {
     pattern: Pattern,
-    fn_: Box<dyn Fn(&mut RewriteCtx, &Term, &[Term]) -> Term>,
+    encoding_type: E::Type,
+    fn_: Box<dyn Fn(&mut RewriteCtx, &Op, &[&E]) -> E>,
 }
 
-impl Rule {
+/// A rewrite rule for lowering IR to a finite-field assertion circuit.
+pub struct Conversion<E: Encoding> {
+    from: E::Type,
+    to: E::Type,
+    fn_: Box<dyn Fn(&mut RewriteCtx, &E) -> E>,
+}
+
+impl<E: Encoding> Rule<E> {
     /// Create a new rule.
-    pub(super) fn new<F: Fn(&mut RewriteCtx, &Term, &[Term]) -> Term + 'static>(
+    pub(super) fn new<F: Fn(&mut RewriteCtx, &Op, &[&E]) -> E + 'static>(
         op_pattern: OpPattern,
-        sort: Sort,
+        sort: SortPattern,
+        encoding_type: E::Type,
         f: F,
     ) -> Self {
         Self {
             pattern: Pattern(op_pattern, sort),
+            encoding_type,
             fn_: Box::new(f),
         }
     }
@@ -79,18 +145,56 @@ impl Rule {
         &self.pattern
     }
 
+    /// The encoding for this rule
+    pub fn encoding_ty(&self) -> E::Type {
+        self.encoding_type
+    }
+
     /// Apply the rule
-    pub(super) fn apply(&self, c: &mut RewriteCtx, t: &Term, l_args: &[Term]) -> Term {
-        debug_assert_eq!(&Pattern::from(t), &self.pattern);
-        (self.fn_)(c, t, l_args)
+    pub(super) fn apply(&self, c: &mut RewriteCtx, t: &Op, args: &[&E]) -> E {
+        debug_assert_eq!(&OpPattern::from(t), &self.pattern.0);
+        for a in args {
+            debug_assert_eq!(a.type_(), self.encoding_ty());
+        }
+        (self.fn_)(c, t, args)
+    }
+}
+
+impl<E: Encoding> Conversion<E> {
+    /// Create a new rule.
+    #[allow(dead_code)]
+    pub(super) fn new<F: Fn(&mut RewriteCtx, &E) -> E + 'static>(
+        from: E::Type,
+        to: E::Type,
+        f: F,
+    ) -> Self {
+        Self {
+            from,
+            to,
+            fn_: Box::new(f),
+        }
+    }
+
+    /// The encoding this rule converts from
+    pub fn from(&self) -> E::Type {
+        self.from
+    }
+
+    /// The encoding this rule converts to
+    pub fn to(&self) -> E::Type {
+        self.to
+    }
+
+    /// Apply the rule
+    pub(super) fn apply(&self, c: &mut RewriteCtx, e: &E) -> E {
+        debug_assert_eq!(e.type_(), self.from());
+        (self.fn_)(c, e)
     }
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 /// A pattern for operators
 pub enum OpPattern {
-    /// Any variable.
-    Var,
     /// Any constant.
     Const,
     /// See [Op::Eq].
@@ -109,10 +213,9 @@ pub enum OpPattern {
     PfUnOp(PfUnOp),
 }
 
-impl OpPattern {
-    fn from_op(op: &Op) -> Self {
+impl From<&Op> for OpPattern {
+    fn from(op: &Op) -> Self {
         match op {
-            Op::Var(..) => OpPattern::Var,
             Op::Const(..) => OpPattern::Const,
             Op::Eq => OpPattern::Eq,
             Op::Not => OpPattern::Not,
@@ -126,13 +229,41 @@ impl OpPattern {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+/// An abstraction of [Sort]
+pub enum SortPattern {
+    /// See [Sort::Bool]
+    Bool,
+    /// See [Sort::BitVector]
+    BitVector,
+}
+
+impl From<&Sort> for SortPattern {
+    fn from(s: &Sort) -> Self {
+        match s {
+            Sort::Bool => SortPattern::Bool,
+            Sort::BitVector(_) => SortPattern::BitVector,
+            _ => unimplemented!("sort {}", s),
+        }
+    }
+}
+
+impl SortPattern {
+    fn sorts(&self, bv_max_bits: usize) -> Vec<Sort> {
+        match self {
+            Self::BitVector => (1..=bv_max_bits).map(Sort::BitVector).collect(),
+            Self::Bool => vec![Sort::Bool],
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
 /// A pattern for sorted operators
-pub struct Pattern(pub OpPattern, pub Sort);
+pub struct Pattern(pub OpPattern, pub SortPattern);
 
 impl<'a> From<&'a Term> for Pattern {
     fn from(t: &'a Term) -> Self {
-        Pattern(OpPattern::from_op(&t.op), check(&t))
+        Pattern(OpPattern::from(&t.op), SortPattern::from(&check(&t)))
     }
 }
 
@@ -141,12 +272,14 @@ impl Pattern {
     /// Get all operators that would match this pattern.
     ///
     /// Panics if there isn't a unique operator.
-    pub fn get_ops(&self) -> Vec<Op> {
+    pub fn get_ops(&self, bv_max_bits: usize) -> Vec<Op> {
         match self.0 {
-            OpPattern::Var => panic!(),
             OpPattern::Const => {
-                let iter = self.1.elems_iter_values();
-                assert!(iter.size_hint().1.is_some(), "Infinite set");
+                let iter = self.1.sorts(bv_max_bits).into_iter().flat_map(|s| {
+                    let iter = s.elems_iter_values();
+                    assert!(iter.size_hint().1.is_some(), "Infinite set");
+                    iter
+                });
                 iter.map(Op::Const).collect()
             }
             OpPattern::Eq => vec![Op::Eq],

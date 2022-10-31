@@ -1,23 +1,36 @@
 //! IR -> R1CS
 
 use crate::ir::term::Computation;
+use crate::ir::term::*;
 use circ_fields::FieldT;
+use std::collections::BTreeSet;
 
-pub mod lang;
 pub mod boolean;
+pub mod lang;
 mod runtime;
 pub mod ver;
 
+fn always_choose_bit(_: &Term, _: &[&BTreeSet<boolean::Ty>]) -> boolean::Ty {
+    boolean::Ty::Bit
+}
+
 /// Lower
 pub fn apply(field: &FieldT, computation: Computation) -> Computation {
-    runtime::apply_rules(boolean::rules(), field, computation)
+    runtime::apply_rules(
+        vec![boolean::var_rule()],
+        boolean::rules(),
+        vec![],
+        Box::new(always_choose_bit),
+        field.clone(),
+        computation,
+    )
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ir::term::*;
     use crate::ir::proof::Constraints;
+    use crate::ir::term::*;
     use crate::target::r1cs::trans::test::PureBool;
     use crate::util::field::DFL_T;
     use quickcheck_macros::quickcheck;

@@ -1,10 +1,55 @@
 //! Rules for lowering booleans to a field
 
-use super::lang::{OpPattern, RewriteCtx, Rule};
+use super::lang::{Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern, VarRule};
 use crate::ir::term::*;
 
 use circ_fields::FieldT;
 use rug::Integer;
+
+/// Types of encodings
+#[derive(Debug, Clone)]
+pub enum Enc {
+    /// A boolean {false, true} represented as {0, 1}.
+    Bit(Term),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+/// Types of encodings, see [Enc].
+pub enum Ty {
+    /// See [Enc::Bit]
+    Bit,
+}
+
+impl EncodingType for Ty {}
+
+impl Enc {
+    #[track_caller]
+    pub(super) fn bit(&self) -> Term {
+        #[allow(unreachable_patterns)]
+        match self {
+            Enc::Bit(b) => b.clone(),
+            _ => panic!("Tried to unwrap {:?} as a bit", self),
+        }
+    }
+}
+
+impl Encoding for Enc {
+    type Type = Ty;
+    fn type_(&self) -> Self::Type {
+        match self {
+            Enc::Bit(_) => Ty::Bit,
+        }
+    }
+
+    fn output(&self, c: &mut RewriteCtx) {
+        #[allow(irrefutable_let_patterns)]
+        if let Enc::Bit(b) = self {
+            c.assert(term![EQ; b.clone(), c.one().clone()]);
+        } else {
+            panic!("Cannot output encoding {:?}", self);
+        }
+    }
+}
 
 fn bool_neg(t: Term) -> Term {
     if let Sort::Field(f) = check(&t) {
@@ -60,14 +105,14 @@ fn rw_bit_split(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Vec<Te
     bits
 }
 
-fn rw_or_helper(ctx: &mut RewriteCtx, mut l_args: Vec<Term>) -> Term {
+fn rw_or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
     loop {
-        match l_args.len() {
+        match args.len() {
             0 => return ctx.zero().clone(),
-            1 => return l_args.pop().unwrap(),
+            1 => return args.pop().unwrap(),
             2 => {
                 return bool_neg(
-                    term![PF_MUL; bool_neg(l_args[0].clone()), bool_neg(l_args[1].clone())],
+                    term![PF_MUL; bool_neg(args[0].clone()), bool_neg(args[1].clone())],
                 )
             }
             i => {
@@ -79,45 +124,45 @@ fn rw_or_helper(ctx: &mut RewriteCtx, mut l_args: Vec<Term>) -> Term {
                 };
                 let new = bool_neg(rw_is_zero(
                     ctx,
-                    term(PF_ADD, l_args.drain(i - take..).collect()),
+                    term(PF_ADD, args.drain(i - take..).collect()),
                 ));
 
-                l_args.push(new);
+                args.push(new);
             }
         };
     }
 }
 
-fn rw_or(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    rw_or_helper(ctx, l_args.to_owned())
+fn rw_or(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(rw_or_helper(ctx, args.iter().map(|a| a.bit()).collect()))
 }
 
-fn rw_and(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    bool_neg(rw_or_helper(
+fn rw_and(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bool_neg(rw_or_helper(
         ctx,
-        l_args.iter().map(|a| bool_neg(a.clone())).collect(),
-    ))
+        args.iter().map(|a| bool_neg(a.bit())).collect(),
+    )))
 }
 
-fn rw_bool_eq(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    term![PF_ADD;
+fn rw_bool_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(term![PF_ADD;
         ctx.one().clone(),
-        term![PF_NEG; l_args[0].clone()],
-        term![PF_NEG; l_args[1].clone()],
-        term![PF_MUL; ctx.f_const(2), l_args[0].clone(), l_args[1].clone()]]
+        term![PF_NEG; args[0].bit()],
+        term![PF_NEG; args[1].bit()],
+        term![PF_MUL; ctx.f_const(2), args[0].bit(), args[1].bit()]])
 }
 
-fn rw_xor(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    let mut l_args = l_args.to_owned();
-    loop {
-        match l_args.len() {
-            0 => return ctx.zero().clone(),
-            1 => return l_args.pop().unwrap(),
+fn rw_xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let mut args: Vec<Term> = args.iter().map(|a| a.bit()).collect();
+    Enc::Bit(loop {
+        match args.len() {
+            0 => break ctx.zero().clone(),
+            1 => break args.pop().unwrap(),
             2 => {
-                return term![PF_ADD;
-                    l_args[0].clone(),
-                    l_args[1].clone(),
-                    term![PF_NEG; term![PF_MUL; ctx.f_const(2), l_args[0].clone(), l_args[1].clone()]]]
+                break term![PF_ADD;
+                    args[0].clone(),
+                    args[1].clone(),
+                    term![PF_NEG; term![PF_MUL; ctx.f_const(2), args[0].clone(), args[1].clone()]]]
             }
             i => {
                 // assumes field is prime
@@ -126,71 +171,90 @@ fn rw_xor(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
                 } else {
                     i
                 };
-                let partial_sum = term(PF_ADD, l_args.drain(i - take..).collect());
+                let partial_sum = term(PF_ADD, args.drain(i - take..).collect());
                 let num_bits = ((partial_sum.cs.len() as f64) + 0.2f64).log2() as usize + 1;
                 let bits = rw_bit_split(ctx, "xor", partial_sum, num_bits);
-                l_args.push(bits.into_iter().next().unwrap());
+                args.push(bits.into_iter().next().unwrap());
             }
         };
-    }
+    })
 }
 
-fn rw_not(_ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    bool_neg(l_args[0].clone())
+fn rw_not(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bool_neg(args[0].bit()))
 }
 
-fn rw_implies(_ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    bool_neg(term![PF_MUL; l_args[0].clone(), bool_neg(l_args[1].clone())])
+fn rw_implies(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bool_neg(
+        term![PF_MUL; args[0].bit(), bool_neg(args[1].bit())],
+    ))
 }
 
-fn rw_var(ctx: &mut RewriteCtx, term: &Term, _l_args: &[Term]) -> Term {
-    if let Op::Var(name, sort) = &term.op {
-        assert_eq!(sort, &Sort::Bool);
-        let f_var = ctx.fresh(&name, bool_to_field(term.clone(), &ctx.field()));
-        rw_ensure_bit(ctx, f_var.clone());
-        f_var
-    } else {
-        unreachable!()
-    }
-}
-
-fn rw_const(ctx: &mut RewriteCtx, term: &Term, _l_args: &[Term]) -> Term {
-    if let Op::Const(Value::Bool(b)) = &term.op {
-        if *b {
+fn rw_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
+    if let Op::Const(Value::Bool(b)) = op {
+        Enc::Bit(if *b {
             ctx.one().clone()
         } else {
             ctx.zero().clone()
-        }
+        })
     } else {
         unreachable!()
     }
 }
 
-fn rw_maj(ctx: &mut RewriteCtx, _term: &Term, l_args: &[Term]) -> Term {
-    if let [a, b, c] = l_args {
+fn rw_maj(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    if let [a, b, c] = args {
         // m = ab + bc + ca - 2abc
         // m = ab + c(b + a - 2ab)
-        let ab = term![PF_MUL; a.clone(), b.clone()];
-        term![PF_ADD; ab.clone(),
-          term![PF_MUL; c.clone(), term![PF_ADD; b.clone(), a.clone(), term![PF_MUL; ctx.f_const(-2), ab]]]]
+        let ab = term![PF_MUL; a.bit(), b.bit()];
+        Enc::Bit(
+            term![PF_ADD; ab.clone(), term![PF_MUL; c.bit(), term![PF_ADD; b.bit(), a.bit(), term![PF_MUL; ctx.f_const(-2), ab]]]],
+        )
     } else {
         unreachable!()
     }
+}
+
+/// The boolean variable encoding rule.
+pub fn var_rule() -> VarRule<Enc> {
+    VarRule::new(
+        SortPattern::Bool,
+        |ctx: &mut RewriteCtx, name: &str, sort: &Sort| {
+            let t = leaf_term(Op::Var(name.into(), sort.clone()));
+            let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
+            ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+            Enc::Bit(v)
+        },
+    )
 }
 
 /// The boolean -> field rewrite rules.
-pub fn rules() -> Vec<Rule> {
+pub fn rules() -> Vec<Rule<Enc>> {
     use OpPattern as OpP;
-    use Sort::Bool;
+    use SortPattern::Bool;
     vec![
-        Rule::new(OpP::Const, Bool, Box::new(rw_const)),
-        Rule::new(OpP::Var, Bool, Box::new(rw_var)),
-        Rule::new(OpP::Eq, Bool, Box::new(rw_bool_eq)),
-        Rule::new(OpP::Not, Bool, Box::new(rw_not)),
-        Rule::new(OpP::BoolMaj, Bool, Box::new(rw_maj)),
-        Rule::new(OpP::Implies, Bool, Box::new(rw_implies)),
-        Rule::new(OpP::BoolNaryOp(BoolNaryOp::Xor), Bool, Box::new(rw_xor)),
-        Rule::new(OpP::BoolNaryOp(BoolNaryOp::Or), Bool, Box::new(rw_or)),
-        Rule::new(OpP::BoolNaryOp(BoolNaryOp::And), Bool, Box::new(rw_and)),
+        Rule::new(OpP::Const, Bool, Ty::Bit, Box::new(rw_const)),
+        Rule::new(OpP::Eq, Bool, Ty::Bit, Box::new(rw_bool_eq)),
+        Rule::new(OpP::Not, Bool, Ty::Bit, Box::new(rw_not)),
+        Rule::new(OpP::BoolMaj, Bool, Ty::Bit, Box::new(rw_maj)),
+        Rule::new(OpP::Implies, Bool, Ty::Bit, Box::new(rw_implies)),
+        Rule::new(
+            OpP::BoolNaryOp(BoolNaryOp::Xor),
+            Bool,
+            Ty::Bit,
+            Box::new(rw_xor),
+        ),
+        Rule::new(
+            OpP::BoolNaryOp(BoolNaryOp::Or),
+            Bool,
+            Ty::Bit,
+            Box::new(rw_or),
+        ),
+        Rule::new(
+            OpP::BoolNaryOp(BoolNaryOp::And),
+            Bool,
+            Ty::Bit,
+            Box::new(rw_and),
+        ),
     ]
 }
