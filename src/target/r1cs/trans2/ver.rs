@@ -28,12 +28,13 @@ impl VerifiableEncoding for Enc {
 fn generate_inputs(op: &Op, max_args: usize) -> Vec<Vec<String>> {
     fn nth_name(mut n: usize) -> String {
         let mut o = String::new();
-        n += 1;
-        while n > 0 {
+        loop {
             o.push((b'a' + (n % 26) as u8) as char);
             n /= 26;
+            if n == 0 {
+                return o;
+            }
         }
-        o
     }
     if let Some(n_args) = op.arity() {
         vec![(0..n_args).map(nth_name).collect()]
