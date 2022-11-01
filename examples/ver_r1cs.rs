@@ -24,7 +24,7 @@ fn main() -> Result<(), String> {
 
     for r in trans::boolean::rules() {
         println!("Rule for {:?}", r.pattern());
-        for (t, soundness) in trans::ver::bool_soundness_terms(&r, &bnd, &DFL_T) {
+        for (t, soundness) in trans::ver::soundness_terms(&r, &bnd, &DFL_T) {
             println!("check: {}", t);
             if let Some(model) = find_model(&soundness) {
                 println!("UNSOUND");

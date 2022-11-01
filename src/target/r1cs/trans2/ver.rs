@@ -6,7 +6,7 @@ use circ_fields::FieldT;
 use std::iter::repeat;
 
 /// An encoding scheme with formalized semantics.
-trait VerifiableEncoding: Encoding {
+pub trait VerifiableEncoding: Encoding {
     /// Given a term `t` and encoded form `self`, return a boolean term which is true iff the
     /// encoding is valid.
     fn is_valid(&self, t: Term) -> Term;
@@ -96,9 +96,16 @@ fn gen_names(sorts: Vec<Sort>) -> Vec<(String, Sort)> {
         .collect()
 }
 
-/// Create QF_FF formulas that are SAT iff this rule is unsound.
-pub fn bool_soundness_terms(rule: &Rule<Enc>, bnd: &Bound, field: &FieldT) -> Vec<(Term, Term)> {
-    assert_eq!(rule.pattern().1, SortPattern::Bool);
+/// Create formulas that are SAT iff this rule is unsound.
+///
+/// Each returned tuple is `(term, soundness)` where `term` is a term comprising a single operator
+/// application that `rule` would apply to, and `soundness` is a boolean term that is SAT iff the
+/// rule if unsound.
+pub fn soundness_terms<E: VerifiableEncoding>(
+    rule: &Rule<E>,
+    bnd: &Bound,
+    field: &FieldT,
+) -> Vec<(Term, Term)> {
     let mut out = Vec::new();
     for sort in sorts(&rule.pattern().1, bnd) {
         for op in ops(&rule.pattern().0, &sort) {
@@ -106,34 +113,33 @@ pub fn bool_soundness_terms(rule: &Rule<Enc>, bnd: &Bound, field: &FieldT) -> Ve
                 let var_parts = gen_names(arg_sorts);
                 let mut assertions = Vec::new();
 
-                // create boolean inputs and term
-                let bool_args: Vec<Term> = var_parts
+                // create inputs
+                let args: Vec<Term> = var_parts
                     .iter()
                     .map(|(n, s)| leaf_term(Op::Var(n.clone(), s.clone())))
                     .collect();
-                let bool_term = term(op.clone(), bool_args.clone());
 
                 // validly encode them
                 let mut ctx = RewriteCtx::new(field.clone());
-                let e_args: Vec<Enc> = var_parts
+                let e_args: Vec<E> = var_parts
                     .iter()
-                    .zip(&bool_args)
+                    .zip(&args)
                     .map(|((name, sort), b)| {
-                        let e = Enc::variable(&mut ctx, name, sort);
+                        let e = E::variable(&mut ctx, name, sort);
                         assertions.push(e.is_valid(b.clone()));
                         e
                     })
                     .collect();
 
                 // apply the lowering rule
-                let ff_term =
-                    rule.apply(&mut ctx, &bool_term.op, &e_args.iter().collect::<Vec<_>>());
+                let t = term(op.clone(), args.clone());
+                let e_t = rule.apply(&mut ctx, &t.op, &e_args.iter().collect::<Vec<_>>());
                 assertions.extend(ctx.assertions); // save the assertions
 
                 // assert that the output is mal-encoded
-                assertions.push(term![NOT; ff_term.is_valid(bool_term.clone())]);
+                assertions.push(term![NOT; e_t.is_valid(t.clone())]);
 
-                out.push((bool_term, term(AND, assertions)))
+                out.push((t, term(AND, assertions)))
             }
         }
     }
