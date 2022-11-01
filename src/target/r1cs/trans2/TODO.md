@@ -1,10 +1,11 @@
 To do:
-* fix Pf2Bv in SMT BE
 * bit-vector lower
 * field flatten
 * clean visibilities
+* better Pf2Bv in SMT BE
 
 Done:
+* basic Pf2Bv in SMT BE
 * verification FE filtering on ops, sorts
 * completeness
 * boolean ITE

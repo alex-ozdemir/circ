@@ -159,7 +159,7 @@ impl Expr2Smt<()> for TermData {
             Op::BvBit(i) => {
                 write!(
                     w,
-                    "(= #b0 ((_ extract {i} {i}) {a}))",
+                    "(= #b1 ((_ extract {i} {i}) {a}))",
                     a = SmtDisp(&*self.cs[0]),
                     i = i,
                 )?;
