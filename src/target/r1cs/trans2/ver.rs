@@ -1,6 +1,6 @@
 //! Verification machinery
 use super::boolean::Enc;
-use super::lang::{RewriteCtx, Rule, SortPattern, Encoding};
+use super::lang::{Encoding, RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 
@@ -64,22 +64,19 @@ pub fn bool_soundness_terms(
             let bool_term = term(op.clone(), bool_args.clone());
 
             // validly encode them
-            let ff_args: Vec<Enc> = vars
+            let mut ctx = RewriteCtx::new(field.clone());
+            let e_args: Vec<Enc> = vars
                 .iter()
-                .map(|n| {
-                    Enc::Bit(leaf_term(Op::Var(
-                        format!("{}_ff", n),
-                        Sort::Field(field.clone()),
-                    )))
+                .zip(&bool_args)
+                .map(|(v, b)| {
+                    let e = Enc::variable(&mut ctx, v, &Sort::Bool);
+                    assertions.push(e.is_valid(b.clone()));
+                    e
                 })
                 .collect();
-            for (b, f) in bool_args.iter().zip(&ff_args) {
-                assertions.push(f.is_valid(b.clone()));
-            }
 
             // apply the lowering rule
-            let mut ctx = RewriteCtx::new(field.clone());
-            let ff_term = rule.apply(&mut ctx, &bool_term.op, &ff_args.iter().collect::<Vec<_>>());
+            let ff_term = rule.apply(&mut ctx, &bool_term.op, &e_args.iter().collect::<Vec<_>>());
             assertions.extend(ctx.assertions); // save the assertions
 
             // assert that the output is mal-encoded
