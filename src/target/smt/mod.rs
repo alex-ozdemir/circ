@@ -154,6 +154,15 @@ impl Expr2Smt<()> for TermData {
                 write!(w, "((_ zero_extend {})", s)?;
                 true
             }
+            Op::BvBit(i) => {
+                write!(
+                    w,
+                    "(= #b0 ((_ extract {i} {i}) {a}))",
+                    a = SmtDisp(&*self.cs[0]),
+                    i = i,
+                )?;
+                false
+            }
             Op::Const(c) => {
                 write!(w, "{}", SmtDisp(c))?;
                 false
@@ -345,6 +354,46 @@ impl<'a, Br: ::std::io::BufRead> ModelParser<String, Sort, Value, &'a mut SmtPar
     }
 }
 
+/// Preprocess the term for SMT emission.
+///
+/// Changes:
+/// * replace FF reciprocal with a skolem that floats if the input is 0
+fn preprocess(t: &Term) -> Term {
+    let mut assertions = Vec::new();
+    let mut i = 0;
+    let mut fresh = |s: Sort| -> Term {
+        i += 1;
+        leaf_term(Op::Var(format!("smt_fresh_{}", i), s))
+    };
+    let mut cache = TermMap::<Term>::default();
+    for n in PostOrderIter::new(t.clone()) {
+        let new = match &n.op {
+            &PF_RECIP => {
+                let i = fresh(check(&n));
+                let a = cache.get(&n.cs[0]).unwrap();
+                // ixx = x (i is the inverse, or floats if x = 0)
+                assertions
+                    .push(term![EQ; term![PF_MUL; i.clone(), a.clone(), a.clone()], a.clone()]);
+                i
+            }
+            _ => term(
+                n.op.clone(),
+                n.cs.iter()
+                    .map(|c| cache.get(c).unwrap())
+                    .cloned()
+                    .collect(),
+            ),
+        };
+        cache.insert(n, new);
+    }
+    assertions.push(cache.remove(t).unwrap());
+    if assertions.len() == 1 {
+        assertions.pop().unwrap()
+    } else {
+        term(AND, assertions)
+    }
+}
+
 /// Create a solver, which can optionally parse models.
 ///
 /// If [rsmt2::conf::CVC4_ENV_VAR] is set, uses that as the solver's invocation command.
@@ -380,18 +429,20 @@ pub fn write_smt2<W: Write>(mut w: W, t: &Term) {
 
 /// Check whether some term is satisfiable.
 pub fn check_sat(t: &Term) -> bool {
+    let t = preprocess(t);
     let mut solver = make_solver((), false, false);
     for c in PostOrderIter::new(t.clone()) {
         if let Op::Var(n, s) = &c.op {
             solver.declare_const(&SmtSymDisp(n), s).unwrap();
         }
     }
-    assert!(check(t) == Sort::Bool);
-    solver.assert(&**t).unwrap();
+    assert!(check(&t) == Sort::Bool);
+    solver.assert(&*t).unwrap();
     solver.check_sat().unwrap()
 }
 
 fn get_model_solver(t: &Term, inc: bool) -> rsmt2::Solver<Parser> {
+    let t = preprocess(t);
     let mut solver = make_solver(Parser, true, inc);
     //solver.path_tee("solver_com").unwrap();
     for c in PostOrderIter::new(t.clone()) {
@@ -399,14 +450,15 @@ fn get_model_solver(t: &Term, inc: bool) -> rsmt2::Solver<Parser> {
             solver.declare_const(&SmtSymDisp(n), s).unwrap();
         }
     }
-    assert!(check(t) == Sort::Bool);
+    assert!(check(&t) == Sort::Bool);
     solver
 }
 
 /// Get a satisfying assignment for `t`, assuming it is SAT.
 pub fn find_model(t: &Term) -> Option<HashMap<String, Value>> {
-    let mut solver = get_model_solver(t, false);
-    solver.assert(&**t).unwrap();
+    let t = preprocess(t);
+    let mut solver = get_model_solver(&t, false);
+    solver.assert(&*t).unwrap();
     if solver.check_sat().unwrap() {
         Some(
             solver
@@ -423,8 +475,9 @@ pub fn find_model(t: &Term) -> Option<HashMap<String, Value>> {
 
 /// Get a unique satisfying assignment for `t`, assuming it is SAT.
 pub fn find_unique_model(t: &Term, uniqs: Vec<String>) -> Option<HashMap<String, Value>> {
-    let mut solver = get_model_solver(t, true);
-    solver.assert(&**t).unwrap();
+    let t = preprocess(t);
+    let mut solver = get_model_solver(&t, true);
+    solver.assert(&*t).unwrap();
     // first, get the result
     let model: HashMap<String, Value> = if solver.check_sat().unwrap() {
         solver
@@ -546,6 +599,46 @@ mod test {
                 .collect()
             )
         )
+    }
+
+    // ignored until FF support in cvc5 is upstreamed.
+    #[ignore]
+    #[test]
+    fn ff_recip() {
+        let t = text::parse_term(
+            b"
+        (declare ((a (mod 5)) (b (mod 5)))
+            (and
+                (= (pfrecip a) b)
+            )
+        )
+        ",
+        );
+        assert!(check_sat(&t));
+    }
+
+    // ignored until FF support in cvc5 is upstreamed.
+    #[ignore]
+    #[test]
+    fn ff_recip_model() {
+        let t = text::parse_term(
+            b"
+        (declare ((a (mod 5)) (b (mod 5)))
+            (and
+                (= a #f2m5)
+                (= a (pfrecip b))
+            )
+        )
+        ",
+        );
+        let field = circ_fields::FieldT::from(rug::Integer::from(5));
+        let model = dbg!(find_model(&t).unwrap());
+        for (name, value) in vec![
+            ("a".to_owned(), Value::Field(field.new_v(2))),
+            ("b".to_owned(), Value::Field(field.new_v(3))),
+        ] {
+            assert_eq!(model.get(&name), Some(&value))
+        }
     }
 
     #[test]

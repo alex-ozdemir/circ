@@ -77,7 +77,7 @@ fn bool_to_field(t: Term, f: &FieldT) -> Term {
 
 fn rw_is_zero(ctx: &mut RewriteCtx, x: Term) -> Term {
     let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
-    // m * x - 1 + is_zero == 0
+    // is_zero_inv * x == 1 - is_zero
     // is_zero * x == 0
     let m = ctx.fresh(
         "is_zero_inv",
@@ -202,6 +202,11 @@ fn rw_implies(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     ))
 }
 
+fn rw_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let diff = term![PF_ADD; args[1].bit(), term![PF_NEG; args[2].bit()]];
+    Enc::Bit(term![PF_ADD; term![PF_MUL; args[0].bit(), diff], args[2].bit()])
+}
+
 fn rw_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     if let Op::Const(Value::Bool(b)) = op {
         Enc::Bit(if *b {
@@ -234,6 +239,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
     vec![
         Rule::new(OpP::Const, Bool, Ty::Bit, Box::new(rw_const)),
         Rule::new(OpP::Eq, Bool, Ty::Bit, Box::new(rw_bool_eq)),
+        Rule::new(OpP::Ite, Bool, Ty::Bit, Box::new(rw_ite)),
         Rule::new(OpP::Not, Bool, Ty::Bit, Box::new(rw_not)),
         Rule::new(OpP::BoolMaj, Bool, Ty::Bit, Box::new(rw_maj)),
         Rule::new(OpP::Implies, Bool, Ty::Bit, Box::new(rw_implies)),

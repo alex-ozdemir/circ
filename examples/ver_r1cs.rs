@@ -16,6 +16,9 @@ struct Options {
     #[structopt(long, short)]
     ops: Vec<String>,
 
+    #[structopt(long, short = "O")]
+    excluded_ops: Vec<String>,
+
     #[structopt(long, short, possible_values = &["bool", "bitvector"])]
     sorts: Vec<String>,
 }
@@ -56,16 +59,16 @@ fn main() -> Result<(), String> {
 
     for r in trans::boolean::rules() {
         let op_ok = opts.ops.is_empty() || opts.ops.contains(&format!("{}", r.pattern().0));
+        let ex_op_ok = !opts.excluded_ops.contains(&format!("{}", r.pattern().0));
         let sort_ok = opts.sorts.is_empty() || opts.sorts.contains(&format!("{}", r.pattern().0));
-        if op_ok && sort_ok {
+        if op_ok && ex_op_ok && sort_ok {
             for prop in &props {
                 let f = match prop {
                     Prop::Sound => trans::ver::soundness_terms,
-                    //Prop::Complete => trans::ver::completeness_terms,
-                    Prop::Complete => unimplemented!(),
+                    Prop::Complete => trans::ver::completeness_terms,
                 };
                 for (t, soundness) in f(&r, &bnd, &DFL_T) {
-                    println!("check: {}", t);
+                    println!("check: {:?} {}", prop, t);
                     if let Some(model) = find_model(&soundness) {
                         println!("ERROR: {}", prop.failure_message());
                         println!(

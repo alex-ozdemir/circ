@@ -174,6 +174,8 @@ pub enum OpPattern {
     Const,
     /// See [Op::Eq].
     Eq,
+    /// See [Op::Ite].
+    Ite,
     /// See [Op::Not].
     Not,
     /// See [Op::Implies].
@@ -193,6 +195,7 @@ impl From<&Op> for OpPattern {
         match op {
             Op::Const(..) => OpPattern::Const,
             Op::Eq => OpPattern::Eq,
+            Op::Ite => OpPattern::Ite,
             Op::Not => OpPattern::Not,
             Op::BoolMaj => OpPattern::BoolMaj,
             Op::Implies => OpPattern::Implies,
@@ -209,6 +212,7 @@ impl std::fmt::Display for OpPattern {
         match self {
             OpPattern::Const => write!(f, "const"),
             OpPattern::Eq => write!(f, "="),
+            OpPattern::Ite => write!(f, "ite"),
             OpPattern::Not => write!(f, "not"),
             OpPattern::Implies => write!(f, "=>"),
             OpPattern::BoolMaj => write!(f, "maj"),
