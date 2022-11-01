@@ -1,4 +1,5 @@
 To do:
+* boolean ITE
 * bit-vector lower
 * field flatten
 * clean visibilities

@@ -46,7 +46,7 @@ fn generate_inputs(op: &Op, max_args: usize) -> Vec<Vec<String>> {
 
 /// Create QF_FF formulas that are SAT iff this rule is unsound.
 pub fn bool_soundness_terms(
-    rule: &Rule<super::boolean::Enc>,
+    rule: &Rule<Enc>,
     max_args: usize,
     field: &FieldT,
 ) -> Vec<(Term, Term)> {
