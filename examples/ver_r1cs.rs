@@ -17,10 +17,14 @@ fn main() -> Result<(), String> {
         .format_timestamp(None)
         .init();
     let opts = Options::from_args();
+    let bnd = trans::ver::Bound {
+        args: opts.max_args,
+        bv_bits: 4,
+    };
 
     for r in trans::boolean::rules() {
         println!("Rule for {:?}", r.pattern());
-        for (t, soundness) in trans::ver::bool_soundness_terms(&r, opts.max_args, &DFL_T) {
+        for (t, soundness) in trans::ver::bool_soundness_terms(&r, &bnd, &DFL_T) {
             println!("check: {}", t);
             if let Some(model) = find_model(&soundness) {
                 println!("UNSOUND");

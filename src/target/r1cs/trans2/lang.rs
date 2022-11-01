@@ -223,15 +223,6 @@ impl From<&Sort> for SortPattern {
     }
 }
 
-impl SortPattern {
-    fn sorts(&self, bv_max_bits: usize) -> Vec<Sort> {
-        match self {
-            Self::BitVector => (1..=bv_max_bits).map(Sort::BitVector).collect(),
-            Self::Bool => vec![Sort::Bool],
-        }
-    }
-}
-
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
 /// A pattern for sorted operators
 pub struct Pattern(pub OpPattern, pub SortPattern);
@@ -239,31 +230,5 @@ pub struct Pattern(pub OpPattern, pub SortPattern);
 impl<'a> From<&'a Term> for Pattern {
     fn from(t: &'a Term) -> Self {
         Pattern(OpPattern::from(&t.op), SortPattern::from(&check(&t)))
-    }
-}
-
-// TODO: split into extension trait.
-impl Pattern {
-    /// Get all operators that would match this pattern.
-    ///
-    /// Panics if there isn't a unique operator.
-    pub fn get_ops(&self, bv_max_bits: usize) -> Vec<Op> {
-        match self.0 {
-            OpPattern::Const => {
-                let iter = self.1.sorts(bv_max_bits).into_iter().flat_map(|s| {
-                    let iter = s.elems_iter_values();
-                    assert!(iter.size_hint().1.is_some(), "Infinite set");
-                    iter
-                });
-                iter.map(Op::Const).collect()
-            }
-            OpPattern::Eq => vec![Op::Eq],
-            OpPattern::Not => vec![Op::Not],
-            OpPattern::BoolMaj => vec![Op::BoolMaj],
-            OpPattern::Implies => vec![Op::Implies],
-            OpPattern::BoolNaryOp(o) => vec![Op::BoolNaryOp(o)],
-            OpPattern::PfUnOp(o) => vec![Op::PfUnOp(o)],
-            OpPattern::PfNaryOp(o) => vec![Op::PfNaryOp(o)],
-        }
     }
 }

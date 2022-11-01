@@ -1,8 +1,9 @@
 //! Verification machinery
 use super::boolean::Enc;
-use super::lang::{Encoding, RewriteCtx, Rule, SortPattern};
+use super::lang::{Encoding, OpPattern, RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
 use circ_fields::FieldT;
+use std::iter::repeat;
 
 /// An encoding scheme with formalized semantics.
 trait VerifiableEncoding: Encoding {
@@ -24,8 +25,60 @@ impl VerifiableEncoding for Enc {
     }
 }
 
-/// Generate all sequences of variables that could be arguments to this operator.
-fn generate_inputs(op: &Op, max_args: usize) -> Vec<Vec<String>> {
+/// A bound for verification
+pub struct Bound {
+    /// The maximum number of operator arguments
+    pub args: usize,
+    /// The maximum size of bitvectors
+    pub bv_bits: usize,
+}
+
+/// Get all sorts for a [SortPattern]
+fn sorts(s: &SortPattern, bnd: &Bound) -> Vec<Sort> {
+    match s {
+        SortPattern::BitVector => (1..=bnd.bv_bits).map(Sort::BitVector).collect(),
+        SortPattern::Bool => vec![Sort::Bool],
+    }
+}
+
+/// Get all operators that would match this [Pattern].
+fn ops(o: &OpPattern, s: &Sort) -> Vec<Op> {
+    match o {
+        OpPattern::Const => {
+            let iter = s.elems_iter_values();
+            assert!(iter.size_hint().1.is_some(), "Infinite set");
+            iter.map(Op::Const).collect()
+        }
+        OpPattern::Eq => vec![Op::Eq],
+        OpPattern::Not => vec![Op::Not],
+        OpPattern::BoolMaj => vec![Op::BoolMaj],
+        OpPattern::Implies => vec![Op::Implies],
+        OpPattern::BoolNaryOp(o) => vec![Op::BoolNaryOp(*o)],
+        OpPattern::PfUnOp(o) => vec![Op::PfUnOp(*o)],
+        OpPattern::PfNaryOp(o) => vec![Op::PfNaryOp(*o)],
+    }
+}
+
+/// Get all argument sort sequences for a given operator
+/// and sort parameter.
+fn arg_sorts(o: &Op, s: &Sort, bnd: &Bound) -> Vec<Vec<Sort>> {
+    match o {
+        Op::Eq => vec![vec![s.clone(), s.clone()]],
+        Op::Ite => vec![vec![Sort::Bool, s.clone(), s.clone()]],
+        _ => {
+            if let Some(n_args) = o.arity() {
+                vec![repeat(s).take(n_args).cloned().collect()]
+            } else {
+                (1..=bnd.args)
+                    .map(|n| repeat(s).take(n).cloned().collect())
+                    .collect()
+            }
+        }
+    }
+}
+
+/// Generate names for some sorts
+fn gen_names(sorts: Vec<Sort>) -> Vec<(String, Sort)> {
     fn nth_name(mut n: usize) -> String {
         let mut o = String::new();
         loop {
@@ -36,54 +89,52 @@ fn generate_inputs(op: &Op, max_args: usize) -> Vec<Vec<String>> {
             }
         }
     }
-    if let Some(n_args) = op.arity() {
-        vec![(0..n_args).map(nth_name).collect()]
-    } else {
-        (1..=max_args)
-            .map(|n| (0..n).map(nth_name).collect())
-            .collect()
-    }
+    sorts
+        .into_iter()
+        .enumerate()
+        .map(|(i, s)| (nth_name(i), s))
+        .collect()
 }
 
 /// Create QF_FF formulas that are SAT iff this rule is unsound.
-pub fn bool_soundness_terms(
-    rule: &Rule<Enc>,
-    max_args: usize,
-    field: &FieldT,
-) -> Vec<(Term, Term)> {
+pub fn bool_soundness_terms(rule: &Rule<Enc>, bnd: &Bound, field: &FieldT) -> Vec<(Term, Term)> {
     assert_eq!(rule.pattern().1, SortPattern::Bool);
     let mut out = Vec::new();
-    for op in rule.pattern().get_ops(4) {
-        for vars in generate_inputs(&op, max_args) {
-            let mut assertions = Vec::new();
+    for sort in sorts(&rule.pattern().1, bnd) {
+        for op in ops(&rule.pattern().0, &sort) {
+            for arg_sorts in arg_sorts(&op, &sort, bnd) {
+                let var_parts = gen_names(arg_sorts);
+                let mut assertions = Vec::new();
 
-            // create boolean inputs and term
-            let bool_args: Vec<Term> = vars
-                .iter()
-                .map(|n| leaf_term(Op::Var(n.clone(), Sort::Bool)))
-                .collect();
-            let bool_term = term(op.clone(), bool_args.clone());
+                // create boolean inputs and term
+                let bool_args: Vec<Term> = var_parts
+                    .iter()
+                    .map(|(n, s)| leaf_term(Op::Var(n.clone(), s.clone())))
+                    .collect();
+                let bool_term = term(op.clone(), bool_args.clone());
 
-            // validly encode them
-            let mut ctx = RewriteCtx::new(field.clone());
-            let e_args: Vec<Enc> = vars
-                .iter()
-                .zip(&bool_args)
-                .map(|(v, b)| {
-                    let e = Enc::variable(&mut ctx, v, &Sort::Bool);
-                    assertions.push(e.is_valid(b.clone()));
-                    e
-                })
-                .collect();
+                // validly encode them
+                let mut ctx = RewriteCtx::new(field.clone());
+                let e_args: Vec<Enc> = var_parts
+                    .iter()
+                    .zip(&bool_args)
+                    .map(|((name, sort), b)| {
+                        let e = Enc::variable(&mut ctx, name, sort);
+                        assertions.push(e.is_valid(b.clone()));
+                        e
+                    })
+                    .collect();
 
-            // apply the lowering rule
-            let ff_term = rule.apply(&mut ctx, &bool_term.op, &e_args.iter().collect::<Vec<_>>());
-            assertions.extend(ctx.assertions); // save the assertions
+                // apply the lowering rule
+                let ff_term =
+                    rule.apply(&mut ctx, &bool_term.op, &e_args.iter().collect::<Vec<_>>());
+                assertions.extend(ctx.assertions); // save the assertions
 
-            // assert that the output is mal-encoded
-            assertions.push(term![NOT; ff_term.is_valid(bool_term.clone())]);
+                // assert that the output is mal-encoded
+                assertions.push(term![NOT; ff_term.is_valid(bool_term.clone())]);
 
-            out.push((bool_term, term(AND, assertions)))
+                out.push((bool_term, term(AND, assertions)))
+            }
         }
     }
     out
