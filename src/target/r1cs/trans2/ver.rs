@@ -38,7 +38,7 @@ fn generate_inputs(op: &Op, max_args: usize) -> Vec<Vec<String>> {
     if let Some(n_args) = op.arity() {
         vec![(0..n_args).map(nth_name).collect()]
     } else {
-        (1..max_args)
+        (1..=max_args)
             .map(|n| (0..n).map(nth_name).collect())
             .collect()
     }
