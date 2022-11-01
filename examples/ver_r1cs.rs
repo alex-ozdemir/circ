@@ -1,5 +1,9 @@
 use circ::ir::term::text::*;
-use circ::target::r1cs::trans2 as trans;
+use circ::target::r1cs::trans2::{
+    boolean::rules,
+    lang::{OpPattern, SortPattern},
+    ver::{completeness_terms, soundness_terms, Bound},
+};
 use circ::target::smt::find_model;
 use circ::util::field::DFL_T;
 use structopt::{clap::arg_enum, StructOpt};
@@ -41,6 +45,27 @@ impl Prop {
     }
 }
 
+fn op_pat_string(o: &OpPattern) -> String {
+    match o {
+        OpPattern::Const => format!("const"),
+        OpPattern::Eq => format!("="),
+        OpPattern::Ite => format!("ite"),
+        OpPattern::Not => format!("not"),
+        OpPattern::Implies => format!("=>"),
+        OpPattern::BoolMaj => format!("maj"),
+        OpPattern::BoolNaryOp(o) => format!("{}", o),
+        OpPattern::PfNaryOp(o) => format!("{}", o),
+        OpPattern::PfUnOp(o) => format!("{}", o),
+    }
+}
+
+fn sort_pat_string(s: &SortPattern) -> String {
+    match s {
+        SortPattern::Bool => format!("bool"),
+        SortPattern::BitVector => format!("bitvector"),
+    }
+}
+
 fn main() -> Result<(), String> {
     env_logger::Builder::from_default_env()
         .format_level(false)
@@ -52,20 +77,21 @@ fn main() -> Result<(), String> {
     } else {
         opts.properties.clone()
     };
-    let bnd = trans::ver::Bound {
+    let bnd = Bound {
         args: opts.max_args,
         bv_bits: 4,
     };
 
-    for r in trans::boolean::rules() {
-        let op_ok = opts.ops.is_empty() || opts.ops.contains(&format!("{}", r.pattern().0));
-        let ex_op_ok = !opts.excluded_ops.contains(&format!("{}", r.pattern().0));
-        let sort_ok = opts.sorts.is_empty() || opts.sorts.contains(&format!("{}", r.pattern().0));
+    for r in rules() {
+        let op_ok = opts.ops.is_empty() || opts.ops.contains(&op_pat_string(&r.pattern().0));
+        let ex_op_ok = !opts.excluded_ops.contains(&sort_pat_string(&r.pattern().1));
+        let sort_ok =
+            opts.sorts.is_empty() || opts.sorts.contains(&sort_pat_string(&r.pattern().1));
         if op_ok && ex_op_ok && sort_ok {
             for prop in &props {
                 let f = match prop {
-                    Prop::Sound => trans::ver::soundness_terms,
-                    Prop::Complete => trans::ver::completeness_terms,
+                    Prop::Sound => soundness_terms,
+                    Prop::Complete => completeness_terms,
                 };
                 for (t, soundness) in f(&r, &bnd, &DFL_T) {
                     println!("check: {:?} {}", prop, t);
