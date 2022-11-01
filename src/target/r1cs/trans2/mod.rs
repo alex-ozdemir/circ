@@ -17,7 +17,6 @@ fn always_choose_bit(_: &Term, _: &[&BTreeSet<boolean::Ty>]) -> boolean::Ty {
 /// Lower
 pub fn apply(field: &FieldT, computation: Computation) -> Computation {
     runtime::apply_rules(
-        vec![boolean::var_rule()],
         boolean::rules(),
         vec![],
         Box::new(always_choose_bit),

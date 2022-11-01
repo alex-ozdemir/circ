@@ -22,46 +22,21 @@ pub trait Encoding: Clone {
     type Type: EncodingType;
     /// Get the type of this encoding.
     fn type_(&self) -> Self::Type;
-    /// Output this encoding.
-    fn output(&self, c: &mut RewriteCtx);
+    /// Output this encoding as a boolean term.
+    fn as_bool_term(&self) -> Term;
+    /// Embed a variable.
+    fn variable(c: &mut RewriteCtx, name: &str, sort: &Sort) -> Self;
 }
 
 /// Chooses an encoding for a term given the available encodings for the arguments.
 pub(super) type Chooser<T> = Box<dyn Fn(&Term, &[&BTreeSet<T>]) -> T>;
 
-/// Encodes an input.
-pub struct VarRule<E: Encoding> {
-    sort_pattern: SortPattern,
-    fn_: Box<dyn Fn(&mut RewriteCtx, &str, &Sort) -> E>,
-}
-
-impl<E: Encoding> VarRule<E> {
-    pub(super) fn new<F: Fn(&mut RewriteCtx, &str, &Sort) -> E + 'static>(
-        sort_pattern: SortPattern,
-        f: F,
-    ) -> Self {
-        Self {
-            sort_pattern,
-            fn_: Box::new(f),
-        }
-    }
-
-    /// Which sorts this rule matches
-    pub fn sort_pattern(&self) -> SortPattern {
-        self.sort_pattern
-    }
-
-    /// Apply the rule
-    pub(super) fn apply(&self, c: &mut RewriteCtx, n: &str, s: &Sort) -> E {
-        (self.fn_)(c, n, s)
-    }
-
-}
-
 #[derive(Debug)]
-#[allow(missing_docs)]
+/// The context in which a rewrite is performed
 pub struct RewriteCtx {
+    /// Assertions
     pub assertions: Vec<Term>,
+    /// New variables that we introduce
     pub new_variables: Vec<(Term, String)>,
     field: FieldT,
     zero: Term,

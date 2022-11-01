@@ -1,6 +1,6 @@
 //! Rules for lowering booleans to a field
 
-use super::lang::{Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern, VarRule};
+use super::lang::{Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
 
 use circ_fields::FieldT;
@@ -41,12 +41,24 @@ impl Encoding for Enc {
         }
     }
 
-    fn output(&self, c: &mut RewriteCtx) {
+    fn as_bool_term(&self) -> Term {
         #[allow(irrefutable_let_patterns)]
         if let Enc::Bit(b) = self {
-            c.assert(term![EQ; b.clone(), c.one().clone()]);
+            term![EQ; b.clone(), pf_lit(FieldT::from(check(b).as_pf()).new_v(1))]
         } else {
             panic!("Cannot output encoding {:?}", self);
+        }
+    }
+
+    fn variable(ctx: &mut RewriteCtx, name: &str, sort: &Sort) -> Self {
+        match sort {
+            Sort::Bool => {
+                let t = leaf_term(Op::Var(name.into(), sort.clone()));
+                let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
+                ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                Enc::Bit(v)
+            }
+            s => unimplemented!("variable sort {}", s),
         }
     }
 }
@@ -213,19 +225,6 @@ fn rw_maj(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     } else {
         unreachable!()
     }
-}
-
-/// The boolean variable encoding rule.
-pub fn var_rule() -> VarRule<Enc> {
-    VarRule::new(
-        SortPattern::Bool,
-        |ctx: &mut RewriteCtx, name: &str, sort: &Sort| {
-            let t = leaf_term(Op::Var(name.into(), sort.clone()));
-            let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
-            ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
-            Enc::Bit(v)
-        },
-    )
 }
 
 /// The boolean -> field rewrite rules.

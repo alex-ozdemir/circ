@@ -1,4 +1,4 @@
-use super::lang::{Chooser, Conversion, Encoding, Pattern, RewriteCtx, Rule, SortPattern, VarRule};
+use super::lang::{Chooser, Conversion, Encoding, Pattern, RewriteCtx, Rule};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 
@@ -6,7 +6,6 @@ use fxhash::FxHashMap as HashMap;
 use std::collections::BTreeSet;
 
 struct Rewriter<E: Encoding> {
-    var_rules: HashMap<SortPattern, VarRule<E>>,
     rules: HashMap<(Pattern, E::Type), Rule<E>>,
     convs: HashMap<(E::Type, E::Type), Conversion<E>>,
     chooser: Chooser<E::Type>,
@@ -15,19 +14,7 @@ struct Rewriter<E: Encoding> {
 }
 
 impl<E: Encoding> Rewriter<E> {
-    fn new(
-        var_rules: Vec<VarRule<E>>,
-        rws: Vec<Rule<E>>,
-        convs: Vec<Conversion<E>>,
-        chooser: Chooser<E::Type>,
-    ) -> Self {
-        let mut var_rules_table: HashMap<SortPattern, VarRule<E>> = HashMap::default();
-        for r in var_rules {
-            let prev = var_rules_table.insert(r.sort_pattern(), r);
-            if prev.is_some() {
-                panic!("Two var rules");
-            }
-        }
+    fn new(rws: Vec<Rule<E>>, convs: Vec<Conversion<E>>, chooser: Chooser<E::Type>) -> Self {
         let mut rules_table: HashMap<(Pattern, E::Type), Rule<E>> = HashMap::default();
         for r in rws {
             let prev = rules_table.insert((r.pattern().clone(), r.encoding_ty()), r);
@@ -45,7 +32,6 @@ impl<E: Encoding> Rewriter<E> {
             }
         }
         Self {
-            var_rules: var_rules_table,
             rules: rules_table,
             convs: convs_table,
             chooser,
@@ -89,8 +75,7 @@ impl<E: Encoding> Rewriter<E> {
     }
     fn visit(&mut self, c: &mut RewriteCtx, t: Term) {
         let new = if let Op::Var(name, sort) = &t.op {
-            let vr = self.var_rules.get(&SortPattern::from(sort)).unwrap();
-            vr.apply(c, name, sort)
+            E::variable(c, name, sort)
         } else {
             let p = Pattern::from(&t);
             let available: Vec<&BTreeSet<E::Type>> =
@@ -112,7 +97,6 @@ impl<E: Encoding> Rewriter<E> {
 
 /// Apply some rules to translated a computation into a field.
 pub fn apply_rules<E: Encoding>(
-    var_rules: Vec<VarRule<E>>,
     rws: Vec<Rule<E>>,
     convs: Vec<Conversion<E>>,
     chooser: Chooser<E::Type>,
@@ -120,7 +104,7 @@ pub fn apply_rules<E: Encoding>(
     mut computation: Computation,
 ) -> Computation {
     assert!(computation.outputs.len() == 1);
-    let mut rewriter = Rewriter::new(var_rules, rws, convs, chooser);
+    let mut rewriter = Rewriter::new(rws, convs, chooser);
     let mut ctx = RewriteCtx::new(field.clone());
     for t in computation.terms_postorder() {
         rewriter.visit(&mut ctx, t);
@@ -130,7 +114,7 @@ pub fn apply_rules<E: Encoding>(
         .encs
         .get(&(computation.outputs()[0].clone(), ty))
         .unwrap();
-    e.output(&mut ctx);
+    ctx.assert(e.as_bool_term());
     computation.outputs = vec![term(AND, ctx.assertions)];
     for (value, name) in ctx.new_variables {
         computation.extend_precomputation(name, value);
