@@ -28,7 +28,6 @@ arg_enum! {
     }
 }
 
-
 fn main() {
     env_logger::Builder::from_default_env()
         .format_level(false)
@@ -39,11 +38,11 @@ fn main() {
     match opts.action {
         ProofAction::Prove => {
             println!("Proving");
-            prove::<Bls12, _, _>(opts.prover_key, opts.proo&input_map).unwrap();
+            prove::<Bls12, _, _>(opts.prover_key, opts.proof, &input_map).unwrap();
         }
         ProofAction::Verify => {
             println!("Verifying");
-            verify::<Bls12, _, _>(opts.verifier_key, opts.proo&input_map).unwrap();
+            verify::<Bls12, _, _>(opts.verifier_key, opts.proof, &input_map).unwrap();
         }
     }
 }
