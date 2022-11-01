@@ -15,6 +15,15 @@ impl VerifiableEncoding for Enc {
                 let f_is_1 = term![EQ; f.clone(), pf_lit(field.new_v(1))];
                 term![AND; f_valid, term![EQ; t.clone(), f_is_1]]
             }
+            Enc::Bits(fs) => {
+                term(AND, fs.iter().enumerate().map(|(i, f)| {
+                    let field = FieldT::from(check(f).as_pf());
+                    let f_valid = term![EQ; term![PF_MUL; f.clone(), f.clone()], f.clone()];
+                    let f_is_1 = term![EQ; f.clone(), pf_lit(field.new_v(1))];
+                    term![AND; f_valid, term![EQ; term![Op::BvBit(i); t.clone()], f_is_1]]
+                }).collect())
+            }
+            _ => unimplemented!(),
         }
     }
 }

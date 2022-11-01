@@ -15,6 +15,10 @@ pub mod ver;
 pub enum Enc {
     /// A boolean {false, true} represented as {0, 1}.
     Bit(Term),
+    /// A bit-vector as field-encoded bits.
+    Bits(Vec<Term>),
+    /// A bit-vector as a small field element.
+    Uint(Term),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -22,6 +26,10 @@ pub enum Enc {
 pub enum Ty {
     /// See [Enc::Bit]
     Bit,
+    /// See [Enc::Bits]
+    Bits,
+    /// See [Enc::Uint]
+    Uint,
 }
 
 impl EncodingType for Ty {}
@@ -42,6 +50,8 @@ impl Encoding for Enc {
     fn type_(&self) -> Self::Type {
         match self {
             Enc::Bit(_) => Ty::Bit,
+            Enc::Bits(_) => Ty::Bits,
+            Enc::Uint(_) => Ty::Uint,
         }
     }
 
