@@ -6,6 +6,8 @@
 
 use crate::ir::term::*;
 
+use circ_fields::FieldT;
+
 use rsmt2::errors::SmtRes;
 use rsmt2::parse::{IdentParser, ModelParser, SmtParser};
 use rsmt2::print::{Expr2Smt, Sort2Smt, Sym2Smt};
@@ -146,7 +148,7 @@ impl Expr2Smt<()> for TermData {
                 write!(w, "({} true", self.op)?;
                 true
             }
-            Op::BvBinPred(_) | Op::BvBinOp(_) | Op::BvNaryOp(_) => {
+            Op::BvBinPred(_) | Op::BvBinOp(_) | Op::BvNaryOp(_) | Op::BvConcat => {
                 write!(w, "({}", self.op)?;
                 true
             }
@@ -358,6 +360,7 @@ impl<'a, Br: ::std::io::BufRead> ModelParser<String, Sort, Value, &'a mut SmtPar
 ///
 /// Changes:
 /// * replace FF reciprocal with a skolem that floats if the input is 0
+/// * replace PfToBv with skolems. UB if input is OOB.
 fn preprocess(t: &Term) -> Term {
     let mut assertions = Vec::new();
     let mut i = 0;
@@ -375,6 +378,28 @@ fn preprocess(t: &Term) -> Term {
                 assertions
                     .push(term![EQ; term![PF_MUL; i.clone(), a.clone(), a.clone()], a.clone()]);
                 i
+            }
+            Op::PfToBv(w) => {
+                let field = FieldT::from(check(&n.cs[0]).as_pf());
+                let bits: Vec<Term> = (0..*w).map(|_| fresh(Sort::Bool)).collect();
+                let scale_sum: Term = term(
+                    PF_ADD,
+                    bits.iter()
+                        .enumerate()
+                        .map(|(i, b)| {
+                            term![PF_MUL; pf_lit(field.new_v(Integer::from(1) << i)),
+                        term![ITE; b.clone(), pf_lit(field.new_v(1)), pf_lit(field.new_v(0))]]
+                        })
+                        .collect(),
+                );
+                assertions.push(term![EQ; scale_sum, cache.get(&n.cs[0]).unwrap().clone()]);
+                term(
+                    BV_CONCAT,
+                    bits.into_iter()
+                        .rev()
+                        .map(|b| term![ITE; b, bv_lit(1, 1), bv_lit(0, 1)])
+                        .collect(),
+                )
             }
             _ => term(
                 n.op.clone(),
@@ -639,6 +664,54 @@ mod test {
         ] {
             assert_eq!(model.get(&name), Some(&value))
         }
+    }
+
+    // ignored until FF support in cvc5 is upstreamed.
+    #[ignore]
+    #[test]
+    fn ff_to_bv_model() {
+        let t = text::parse_term(
+            b"
+        (declare ((a (mod 17)))
+            (and
+                (= (bvmul
+                  ((pf2bv 3) a)
+                  ((pf2bv 3) a))
+                  ((pf2bv 3) a))
+                (bvugt
+                  ((pf2bv 3) a) #b000)
+            )
+        )
+        ",
+        );
+        let field = circ_fields::FieldT::from(rug::Integer::from(17));
+        let model = dbg!(find_model(&t).unwrap());
+        for (name, value) in vec![
+            ("a".to_owned(), Value::Field(field.new_v(1))),
+        ] {
+            assert_eq!(model.get(&name), Some(&value))
+        }
+    }
+
+    // ignored until FF support in cvc5 is upstreamed.
+    #[ignore]
+    #[test]
+    fn ff_to_bv_is_sat() {
+        let t = text::parse_term(
+            b"
+        (declare ((a (mod 17)))
+            (and
+                (= (bvmul
+                  ((pf2bv 3) a)
+                  ((pf2bv 3) a))
+                  ((pf2bv 3) a))
+                (bvugt
+                  ((pf2bv 3) a) #b001)
+            )
+        )
+        ",
+        );
+        assert!(!check_sat(&t));
     }
 
     #[test]
