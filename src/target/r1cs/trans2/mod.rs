@@ -1,25 +1,19 @@
 //! IR -> R1CS
 
 use crate::ir::term::Computation;
-use crate::ir::term::*;
 use circ_fields::FieldT;
-use std::collections::BTreeSet;
 
-pub mod boolean;
 pub mod lang;
+pub mod rules;
 mod runtime;
 pub mod ver;
-
-fn always_choose_bit(_: &Term, _: &[&BTreeSet<boolean::Ty>]) -> boolean::Ty {
-    boolean::Ty::Bit
-}
 
 /// Lower
 pub fn apply(field: &FieldT, computation: Computation) -> Computation {
     runtime::apply_rules(
-        boolean::rules(),
+        rules::rules(),
         vec![],
-        Box::new(always_choose_bit),
+        Box::new(rules::choose),
         field.clone(),
         computation,
     )

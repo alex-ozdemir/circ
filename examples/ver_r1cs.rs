@@ -1,6 +1,6 @@
 use circ::ir::term::text::*;
 use circ::target::r1cs::trans2::{
-    boolean::rules,
+    rules::rules,
     lang::{OpPattern, SortPattern},
     ver::{completeness_terms, soundness_terms, Bound},
 };

@@ -1,10 +1,14 @@
-//! Rules for lowering booleans to a field
+//! Rules for lowering booleans and bit-vectors to a field
 
 use super::lang::{Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
 
 use circ_fields::FieldT;
 use rug::Integer;
+
+use std::collections::BTreeSet;
+
+pub mod ver;
 
 /// Types of encodings
 #[derive(Debug, Clone)]
@@ -232,7 +236,7 @@ fn rw_maj(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
-/// The boolean -> field rewrite rules.
+/// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use OpPattern as OpP;
     use SortPattern::Bool;
@@ -263,3 +267,9 @@ pub fn rules() -> Vec<Rule<Enc>> {
         ),
     ]
 }
+
+/// Our encoding choice function
+pub fn choose(_: &Term, _: &[&BTreeSet<Ty>]) -> Ty {
+    Ty::Bit
+}
+
