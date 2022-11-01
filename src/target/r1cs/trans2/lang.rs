@@ -204,6 +204,21 @@ impl From<&Op> for OpPattern {
     }
 }
 
+impl std::fmt::Display for OpPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpPattern::Const => write!(f, "const"),
+            OpPattern::Eq => write!(f, "="),
+            OpPattern::Not => write!(f, "not"),
+            OpPattern::Implies => write!(f, "=>"),
+            OpPattern::BoolMaj => write!(f, "maj"),
+            OpPattern::BoolNaryOp(o) => write!(f, "{}", o),
+            OpPattern::PfNaryOp(o) => write!(f, "{}", o),
+            OpPattern::PfUnOp(o) => write!(f, "{}", o),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 /// An abstraction of [Sort]
 pub enum SortPattern {
@@ -211,6 +226,15 @@ pub enum SortPattern {
     Bool,
     /// See [Sort::BitVector]
     BitVector,
+}
+
+impl std::fmt::Display for SortPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SortPattern::Bool => write!(f, "bool"),
+            SortPattern::BitVector => write!(f, "bitvector"),
+        }
+    }
 }
 
 impl From<&Sort> for SortPattern {
