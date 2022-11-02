@@ -56,6 +56,7 @@ fn op_pat_string(o: &OpPattern) -> String {
         OpPattern::BoolNaryOp(o) => format!("{}", o),
         OpPattern::PfNaryOp(o) => format!("{}", o),
         OpPattern::PfUnOp(o) => format!("{}", o),
+        OpPattern::BvBit => format!("bit"),
     }
 }
 

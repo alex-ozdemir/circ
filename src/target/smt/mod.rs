@@ -5,6 +5,7 @@
 //! [rsmt2::conf::CVC4_ENV_VAR].
 
 use crate::ir::term::*;
+use crate::ir::opt::cfold::fold;
 
 use circ_fields::FieldT;
 
@@ -362,6 +363,7 @@ impl<'a, Br: ::std::io::BufRead> ModelParser<String, Sort, Value, &'a mut SmtPar
 /// * replace FF reciprocal with a skolem that floats if the input is 0
 /// * replace PfToBv with skolems. UB if input is OOB.
 fn preprocess(t: &Term) -> Term {
+    let t = fold(t, &[]);
     let mut assertions = Vec::new();
     let mut i = 0;
     let mut fresh = |s: Sort| -> Term {
@@ -411,7 +413,7 @@ fn preprocess(t: &Term) -> Term {
         };
         cache.insert(n, new);
     }
-    assertions.push(cache.remove(t).unwrap());
+    assertions.push(cache.remove(&t).unwrap());
     if assertions.len() == 1 {
         assertions.pop().unwrap()
     } else {

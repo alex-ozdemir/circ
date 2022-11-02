@@ -37,10 +37,24 @@ impl EncodingType for Ty {}
 impl Enc {
     #[track_caller]
     pub(super) fn bit(&self) -> Term {
-        #[allow(unreachable_patterns)]
         match self {
             Enc::Bit(b) => b.clone(),
             _ => panic!("Tried to unwrap {:?} as a bit", self),
+        }
+    }
+    #[track_caller]
+    pub(super) fn bits(&self) -> &[Term] {
+        match self {
+            Enc::Bits(b) => b,
+            _ => panic!("Tried to unwrap {:?} as bv bits", self),
+        }
+    }
+    #[track_caller]
+    #[allow(dead_code)]
+    pub(super) fn uint(&self) -> Term {
+        match self {
+            Enc::Uint(b) => b.clone(),
+            _ => panic!("Tried to unwrap {:?} as bv uint", self),
         }
     }
 }
@@ -71,6 +85,19 @@ impl Encoding for Enc {
                 let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
                 ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
                 Enc::Bit(v)
+            }
+            Sort::BitVector(w) => {
+                let bv_t = leaf_term(Op::Var(name.into(), sort.clone()));
+                Enc::Bits(
+                    (0..*w)
+                        .map(|i| {
+                            let t = term![Op::BvBit(i); bv_t.clone()];
+                            let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
+                            ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                            v
+                        })
+                        .collect(),
+                )
             }
             s => unimplemented!("variable sort {}", s),
         }
@@ -246,10 +273,36 @@ fn rw_maj(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
+fn rw_bv_bit(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+    if let Op::BvBit(i) = op {
+        Enc::Bit(args[0].bits()[*i].clone())
+    } else {
+        unreachable!()
+    }
+}
+
+fn rw_bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
+    if let Op::Const(Value::BitVector(bv)) = op {
+        Enc::Bits(
+            (0..bv.width())
+                .map(|i| {
+                    if bv.bit(i) {
+                        ctx.one().clone()
+                    } else {
+                        ctx.zero().clone()
+                    }
+                })
+                .collect(),
+        )
+    } else {
+        unreachable!()
+    }
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use OpPattern as OpP;
-    use SortPattern::Bool;
+    use SortPattern::{BitVector, Bool};
     vec![
         Rule::new(OpP::Const, Bool, Ty::Bit, Box::new(rw_const)),
         Rule::new(OpP::Eq, Bool, Ty::Bit, Box::new(rw_bool_eq)),
@@ -275,11 +328,23 @@ pub fn rules() -> Vec<Rule<Enc>> {
             Ty::Bit,
             Box::new(rw_and),
         ),
+        Rule::new(OpP::Const, BitVector, Ty::Bits, Box::new(rw_bv_const)),
+        Rule::new(OpP::BvBit, BitVector, Ty::Bits, Box::new(rw_bv_bit)),
     ]
 }
 
 /// Our encoding choice function
-pub fn choose(_: &Term, _: &[&BTreeSet<Ty>]) -> Ty {
-    Ty::Bit
+pub fn choose(t: &Term, _: &[&BTreeSet<Ty>]) -> Ty {
+    match &t.op {
+        Op::BoolMaj | Op::BoolNaryOp(_) | Op::Not | Op::Implies => Ty::Bit,
+        Op::Eq => match check(&t.cs[0]) {
+            Sort::Bool => Ty::Bit,
+            Sort::BitVector(_) => Ty::Uint,
+            _ => unimplemented!(),
+        },
+        Op::Const(Value::Bool(_)) => Ty::Bit,
+        Op::Const(Value::BitVector(_)) => Ty::Bits,
+        Op::BvBit(_) => Ty::Bits,
+        _ => panic!(),
+    }
 }
-

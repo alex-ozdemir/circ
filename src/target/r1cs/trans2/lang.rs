@@ -17,7 +17,7 @@ use rug::Integer;
 pub trait EncodingType: Copy + Hash + Eq + Debug + Ord {}
 
 /// The encoding itself.
-pub trait Encoding: Clone {
+pub trait Encoding: Clone + Debug {
     /// Types for this encoding.
     type Type: EncodingType;
     /// Get the type of this encoding.
@@ -188,6 +188,8 @@ pub enum OpPattern {
     PfNaryOp(PfNaryOp),
     /// See [Op::PfUnOp].
     PfUnOp(PfUnOp),
+    /// See [Op::BvBit].
+    BvBit,
 }
 
 impl From<&Op> for OpPattern {
@@ -202,6 +204,7 @@ impl From<&Op> for OpPattern {
             Op::BoolNaryOp(b) => OpPattern::BoolNaryOp(*b),
             Op::PfNaryOp(b) => OpPattern::PfNaryOp(*b),
             Op::PfUnOp(b) => OpPattern::PfUnOp(*b),
+            Op::BvBit(_) => OpPattern::BvBit,
             _ => unimplemented!("op {}", op),
         }
     }

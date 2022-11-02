@@ -40,6 +40,8 @@ impl<E: Encoding> Rewriter<E> {
         }
     }
     fn add(&mut self, t: Term, e: E) {
+        dbg!(&t);
+        dbg!(&e);
         let types = self.types.entry(t.clone()).or_default();
         if types.insert(e.type_()) {
             self.encs.insert((t, e.type_()), e);
@@ -67,7 +69,7 @@ impl<E: Encoding> Rewriter<E> {
             let cnv = self
                 .convs
                 .get(&(from_ty, ty))
-                .unwrap_or_else(|| panic!("No conversion"));
+                .unwrap_or_else(|| panic!("No conversion {:?} -> {:?}", from_ty, ty));
             let e = self.encs.get(&(t.clone(), from_ty)).unwrap();
             let new_e = cnv.apply(c, e);
             self.add(t.clone(), new_e);

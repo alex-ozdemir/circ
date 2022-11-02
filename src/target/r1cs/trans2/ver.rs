@@ -30,11 +30,7 @@ fn sorts(s: &SortPattern, bnd: &Bound) -> Vec<Sort> {
 /// Get all operators that would match this [Pattern].
 fn ops(o: &OpPattern, s: &Sort) -> Vec<Op> {
     match o {
-        OpPattern::Const => {
-            let iter = s.elems_iter_values();
-            assert!(iter.size_hint().1.is_some(), "Infinite set");
-            iter.map(Op::Const).collect()
-        }
+        OpPattern::Const => s.elems_iter_values().map(Op::Const).collect(),
         OpPattern::Eq => vec![Op::Eq],
         OpPattern::Ite => vec![Op::Ite],
         OpPattern::Not => vec![Op::Not],
@@ -43,6 +39,7 @@ fn ops(o: &OpPattern, s: &Sort) -> Vec<Op> {
         OpPattern::BoolNaryOp(o) => vec![Op::BoolNaryOp(*o)],
         OpPattern::PfUnOp(o) => vec![Op::PfUnOp(*o)],
         OpPattern::PfNaryOp(o) => vec![Op::PfNaryOp(*o)],
+        OpPattern::BvBit => (0..s.as_bv()).map(|i| Op::BvBit(i)).collect(),
     }
 }
 
