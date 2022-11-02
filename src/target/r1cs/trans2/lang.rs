@@ -235,6 +235,13 @@ pub struct Pattern(pub OpPattern, pub SortPattern);
 
 impl<'a> From<&'a Term> for Pattern {
     fn from(t: &'a Term) -> Self {
-        Pattern(OpPattern::from(&t.op), SortPattern::from(&check(&t)))
+        // get a term whose type is the parameter of this operator
+        let term_of_type_param = match &t.op {
+            Op::Ite => &t.cs[1],
+            Op::Eq => &t.cs[0],
+            Op::BvBit(_) => &t.cs[0],
+            _ => t,
+        };
+        Pattern(OpPattern::from(&t.op), SortPattern::from(&check(term_of_type_param)))
     }
 }
