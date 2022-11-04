@@ -1,12 +1,12 @@
 To do:
-* fix variable soundness VC
-* conversion completeness VC
 * bv lowering
 * field flatten
 * clean visibilities
 * better Pf2Bv in SMT BE
+* fix variable soundness VC
 
 Done:
+* conversion completeness VC
 * variable completeness VC
 * conversion soundness VC
 * Improve FE output for param'd sort patterns

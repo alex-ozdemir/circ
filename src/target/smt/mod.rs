@@ -4,8 +4,8 @@
 //! The SMT solver's invocation command can be configured by setting the environmental variable
 //! [rsmt2::conf::CVC4_ENV_VAR].
 
-use crate::ir::term::*;
 use crate::ir::opt::cfold::fold;
+use crate::ir::term::*;
 
 use circ_fields::FieldT;
 
@@ -148,6 +148,10 @@ impl Expr2Smt<()> for TermData {
             Op::BoolNaryOp(BoolNaryOp::And) => {
                 write!(w, "({} true", self.op)?;
                 true
+            }
+            Op::BvConcat if self.cs.len() == 1 => {
+                write!(w, "{}", SmtDisp(&*self.cs[0]))?;
+                false
             }
             Op::BvBinPred(_) | Op::BvBinOp(_) | Op::BvNaryOp(_) | Op::BvConcat => {
                 write!(w, "({}", self.op)?;
@@ -414,11 +418,14 @@ fn preprocess(t: &Term) -> Term {
         cache.insert(n, new);
     }
     assertions.push(cache.remove(&t).unwrap());
-    if assertions.len() == 1 {
-        assertions.pop().unwrap()
-    } else {
-        term(AND, assertions)
-    }
+    fold(
+        &if assertions.len() == 1 {
+            assertions.pop().unwrap()
+        } else {
+            term(AND, assertions)
+        },
+        &[],
+    )
 }
 
 /// Create a solver, which can optionally parse models.
@@ -469,7 +476,6 @@ pub fn check_sat(t: &Term) -> bool {
 }
 
 fn get_model_solver(t: &Term, inc: bool) -> rsmt2::Solver<Parser> {
-    let t = preprocess(t);
     let mut solver = make_solver(Parser, true, inc);
     //solver.path_tee("solver_com").unwrap();
     for c in PostOrderIter::new(t.clone()) {
@@ -659,7 +665,7 @@ mod test {
         ",
         );
         let field = circ_fields::FieldT::from(rug::Integer::from(5));
-        let model = dbg!(find_model(&t).unwrap());
+        let model = find_model(&t).unwrap();
         for (name, value) in vec![
             ("a".to_owned(), Value::Field(field.new_v(2))),
             ("b".to_owned(), Value::Field(field.new_v(3))),
@@ -687,10 +693,8 @@ mod test {
         ",
         );
         let field = circ_fields::FieldT::from(rug::Integer::from(17));
-        let model = dbg!(find_model(&t).unwrap());
-        for (name, value) in vec![
-            ("a".to_owned(), Value::Field(field.new_v(1))),
-        ] {
+        let model = find_model(&t).unwrap();
+        for (name, value) in vec![("a".to_owned(), Value::Field(field.new_v(1)))] {
             assert_eq!(model.get(&name), Some(&value))
         }
     }

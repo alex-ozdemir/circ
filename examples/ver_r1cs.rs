@@ -2,7 +2,7 @@ use circ::ir::term::text::*;
 use circ::target::r1cs::trans2::{
     lang::{OpPattern, SortPattern},
     rules::{rules, Enc},
-    ver::{c_soundness_terms, completeness_terms, soundness_terms, v_completeness_terms, Bound},
+    ver::{c_completeness_terms, c_soundness_terms, completeness_terms, soundness_terms, v_completeness_terms, Bound},
 };
 use circ::target::smt::find_model;
 use circ::util::field::DFL_T;
@@ -84,7 +84,23 @@ fn main() -> Result<(), String> {
     };
 
     for (from, to, s, t) in c_soundness_terms::<Enc>(&bnd, &DFL_T) {
-        println!("check: conversion {:?} -> {:?} : {}", from, to, s);
+        println!("check: sound conversion {:?} -> {:?} : {}", from, to, s);
+        if let Some(model) = find_model(&t) {
+            println!("ERROR: unsound");
+            println!(
+                "Formula:\n{}\n",
+                pp_sexpr(serialize_term(&t).as_bytes(), 100)
+            );
+            println!(
+                "Counterexample: {}",
+                serialize_value_map(&model.into_iter().collect())
+            );
+            return Err(format!("ERROR"));
+        }
+    }
+
+    for (from, to, s, t) in c_completeness_terms::<Enc>(&bnd, &DFL_T) {
+        println!("check: complete conversion {:?} -> {:?} : {}", from, to, s);
         if let Some(model) = find_model(&t) {
             println!("ERROR: unsound");
             println!(

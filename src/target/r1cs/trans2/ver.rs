@@ -288,6 +288,44 @@ pub fn c_soundness_terms<E: VerifiableEncoding>(
     out
 }
 
+/// Create formulas that are SAT iff some conversion rule is unsound.
+///
+/// Each returned tuple is `(from, to, soundness)` where:
+///
+/// * `from` is the initial encoding
+/// * `to` is the final encoding
+/// * `soundness` is a boolean term that is SAT iff the rule is unsound.
+pub fn c_completeness_terms<E: VerifiableEncoding>(
+    bnd: &Bound,
+    field: &FieldT,
+) -> Vec<(E::Type, E::Type, Sort, Term)> {
+    let mut out = Vec::new();
+    for from in <E::Type as EncodingType>::all() {
+        for to in <E::Type as EncodingType>::all() {
+            if from != to && from.sort() == to.sort() {
+                for sort in sorts(&from.sort(), bnd) {
+                    let mut ctx = RewriteCtx::new(field.clone());
+                    let name = "a".to_owned();
+                    let e = E::variable(&mut ctx, &name, &sort, from);
+                    let _e2 = e.convert(&mut ctx, to);
+                    let mut assertions = Vec::new();
+
+                    // assert the pre-compute is correct
+                    for (val, name) in ctx.new_variables.drain(..) {
+                        let var = leaf_term(Op::Var(name, check(&val)));
+                        assertions.push(term![EQ; var, val]);
+                    }
+
+                    assertions.push(term![NOT; mk_and(ctx.assertions)]);
+
+                    out.push((from, to, sort, mk_and(assertions)));
+                }
+            }
+        }
+    }
+    out
+}
+
 fn mk_and(mut ts: Vec<Term>) -> Term {
     match ts.len() {
         0 => bool_lit(true),
