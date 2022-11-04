@@ -40,15 +40,17 @@ impl VerifiableEncoding for Enc {
                 );
                 term![AND; term![EQ; sum, sum2], all_bits]
             }
-            Enc::Uint(f) => {
+            Enc::Uint(f, _) => {
                 let field = FieldT::from(check(f).as_pf());
                 let n_bits = check(&t).as_bv();
+                let one = pf_lit(field.new_v(1));
+                let zero = pf_lit(field.new_v(0));
                 let sum2 = term(
                     PF_ADD,
                     (0..n_bits)
                         .map(|i| {
                             term![PF_MUL; pf_lit(field.new_v(Integer::from(1) << i)),
-                            term![Op::BvBit(i); t.clone()]]
+                            term![ITE; term![Op::BvBit(i); t.clone()], one.clone(), zero.clone()]]
                         })
                         .collect(),
                 );

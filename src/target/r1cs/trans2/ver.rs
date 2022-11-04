@@ -1,8 +1,9 @@
 //! Verification machinery
 #[allow(unused_imports)]
-use super::lang::{Encoding, OpPattern, RewriteCtx, Rule, SortPattern, Conversion, EncodingType};
+use super::lang::{Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
 use circ_fields::FieldT;
+use std::collections::BTreeSet;
 use std::iter::repeat;
 
 /// An encoding scheme with formalized semantics.
@@ -185,54 +186,107 @@ pub fn completeness_terms<E: VerifiableEncoding>(
     out
 }
 
-// /// Create formulas that are SAT iff this conversion rule is unsound.
-// ///
-// /// Each returned tuple is `soundness` where `soundness` is a boolean term that is SAT iff the rule
-// /// if unsound.
-// pub fn c_soundness_terms<E: VerifiableEncoding>(
-//     conv: &Conversion<E>,
-//     bnd: &Bound,
-//     field: &FieldT,
-// ) -> Vec<(Term, Term)> {
-//     let mut out = Vec::new();
-//     for sort in sorts(&rule.pattern().1, bnd) {
-//         for op in ops(&rule.pattern().0, &sort) {
-//             for arg_sorts in arg_sorts(&op, &sort, bnd) {
-//                 let var_parts = gen_names(arg_sorts);
-//                 let mut assertions = Vec::new();
-// 
-//                 // create inputs
-//                 let args: Vec<Term> = var_parts
-//                     .iter()
-//                     .map(|(n, s)| leaf_term(Op::Var(n.clone(), s.clone())))
-//                     .collect();
-// 
-//                 // validly encode them
-//                 let mut ctx = RewriteCtx::new(field.clone());
-//                 let e_args: Vec<E> = var_parts
-//                     .iter()
-//                     .zip(&args)
-//                     .map(|((name, sort), b)| {
-//                         let e = E::d_variable(&mut ctx, name, sort);
-//                         assertions.push(e.is_valid(b.clone()));
-//                         e
-//                     })
-//                     .collect();
-// 
-//                 // apply the lowering rule
-//                 let t = term(op.clone(), args.clone());
-//                 let e_t = rule.apply(&mut ctx, &t.op, &e_args.iter().collect::<Vec<_>>());
-//                 assertions.extend(ctx.assertions); // save the assertions
-// 
-//                 // assert that the output is mal-encoded
-//                 assertions.push(term![NOT; e_t.is_valid(t.clone())]);
-// 
-//                 out.push((t, mk_and(assertions)))
-//             }
-//         }
-//     }
-//     out
-// }
+/// Create formulas that are SAT iff some variable rule is unsound.
+///
+/// Each returned tuple is `(sort, soundness)` where:
+///
+/// * `sort` is the sort that the term's operator may be parameterized on
+/// * `soundness` is a boolean term that is SAT iff the rule is unsound.
+pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound, field: &FieldT) -> Vec<(Sort, Term)> {
+    // TODO: broken. Need a universal quant?
+    // b/c you want to say "this is valid for no input?"
+    let mut out = Vec::new();
+    let sort_patterns: BTreeSet<SortPattern> = <E::Type as EncodingType>::all()
+        .into_iter()
+        .map(|t| t.sort())
+        .collect();
+    for sort_pattern in sort_patterns {
+        for sort in sorts(&sort_pattern, bnd) {
+            let mut ctx = RewriteCtx::new(field.clone());
+            let name = "a".to_owned();
+            let e = E::d_variable(&mut ctx, &name, &sort);
+            let var = leaf_term(Op::Var(name, sort.clone()));
+            let is_valid = e.is_valid(var);
+            let mut assertions = ctx.assertions;
+            assertions.push(term![NOT; is_valid]);
+            out.push((sort, mk_and(assertions)));
+        }
+    }
+    out
+}
+
+/// Create formulas that are SAT iff some variable rule is incomplete.
+///
+/// Each returned tuple is `(sort, term)` where:
+///
+/// * `sort` is the sort that the term's operator may be parameterized on
+/// * `term` is a boolean term that is SAT iff the rule is incomplete.
+pub fn v_completeness_terms<E: VerifiableEncoding>(
+    bnd: &Bound,
+    field: &FieldT,
+) -> Vec<(Sort, Term)> {
+    let mut out = Vec::new();
+    let sort_patterns: BTreeSet<SortPattern> = <E::Type as EncodingType>::all()
+        .into_iter()
+        .map(|t| t.sort())
+        .collect();
+    for sort_pattern in sort_patterns {
+        for sort in sorts(&sort_pattern, bnd) {
+            let mut ctx = RewriteCtx::new(field.clone());
+            let name = "a".to_owned();
+            let _e = E::d_variable(&mut ctx, &name, &sort);
+            let mut assertions = Vec::new();
+
+            // assert the pre-compute is correct
+            for (val, name) in ctx.new_variables {
+                let var = leaf_term(Op::Var(name, check(&val)));
+                assertions.push(term![EQ; var, val]);
+            }
+
+            assertions.push(term![NOT; mk_and(ctx.assertions)]);
+
+            out.push((sort, mk_and(assertions)));
+        }
+    }
+    out
+}
+
+/// Create formulas that are SAT iff some conversion rule is unsound.
+///
+/// Each returned tuple is `(from, to, soundness)` where:
+///
+/// * `from` is the initial encoding
+/// * `to` is the final encoding
+/// * `soundness` is a boolean term that is SAT iff the rule is unsound.
+pub fn c_soundness_terms<E: VerifiableEncoding>(
+    bnd: &Bound,
+    field: &FieldT,
+) -> Vec<(E::Type, E::Type, Sort, Term)> {
+    let mut out = Vec::new();
+    for from in <E::Type as EncodingType>::all() {
+        for to in <E::Type as EncodingType>::all() {
+            if from != to && from.sort() == to.sort() {
+                for sort in sorts(&from.sort(), bnd) {
+                    let mut ctx = RewriteCtx::new(field.clone());
+                    let name = "a".to_owned();
+                    let e = E::variable(&mut ctx, &name, &sort, from);
+                    let var = leaf_term(Op::Var(name, sort.clone()));
+                    // assert the pre-compute is correct
+                    for (val, name) in ctx.new_variables.drain(..) {
+                        let var = leaf_term(Op::Var(name, check(&val)));
+                        ctx.assertions.push(term![EQ; var, val]);
+                    }
+                    let e2 = e.convert(&mut ctx, to);
+                    let is_valid = e2.is_valid(var);
+                    let mut assertions = ctx.assertions;
+                    assertions.push(term![NOT; is_valid]);
+                    out.push((from, to, sort, mk_and(assertions)));
+                }
+            }
+        }
+    }
+    out
+}
 
 fn mk_and(mut ts: Vec<Term>) -> Term {
     match ts.len() {

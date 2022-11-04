@@ -1,8 +1,8 @@
 use circ::ir::term::text::*;
 use circ::target::r1cs::trans2::{
-    rules::rules,
     lang::{OpPattern, SortPattern},
-    ver::{completeness_terms, soundness_terms, Bound},
+    rules::{rules, Enc},
+    ver::{c_soundness_terms, completeness_terms, soundness_terms, v_completeness_terms, Bound},
 };
 use circ::target::smt::find_model;
 use circ::util::field::DFL_T;
@@ -82,6 +82,38 @@ fn main() -> Result<(), String> {
         args: opts.max_args,
         bv_bits: 4,
     };
+
+    for (from, to, s, t) in c_soundness_terms::<Enc>(&bnd, &DFL_T) {
+        println!("check: conversion {:?} -> {:?} : {}", from, to, s);
+        if let Some(model) = find_model(&t) {
+            println!("ERROR: unsound");
+            println!(
+                "Formula:\n{}\n",
+                pp_sexpr(serialize_term(&t).as_bytes(), 100)
+            );
+            println!(
+                "Counterexample: {}",
+                serialize_value_map(&model.into_iter().collect())
+            );
+            return Err(format!("ERROR"));
+        }
+    }
+
+    for (s, t) in v_completeness_terms::<Enc>(&bnd, &DFL_T) {
+        println!("check: variable {}", s);
+        if let Some(model) = find_model(&t) {
+            println!("ERROR");
+            println!(
+                "Formula:\n{}\n",
+                pp_sexpr(serialize_term(&t).as_bytes(), 100)
+            );
+            println!(
+                "Counterexample: {}",
+                serialize_value_map(&model.into_iter().collect())
+            );
+            return Err(format!("ERROR"));
+        }
+    }
 
     for r in rules() {
         let op_ok = opts.ops.is_empty() || opts.ops.contains(&op_pat_string(&r.pattern().0));

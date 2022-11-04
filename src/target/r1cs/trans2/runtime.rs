@@ -1,4 +1,4 @@
-use super::lang::{Chooser, Conversion, Encoding, Pattern, RewriteCtx, Rule};
+use super::lang::{Chooser, Encoding, Pattern, RewriteCtx, Rule};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 
@@ -7,14 +7,13 @@ use std::collections::BTreeSet;
 
 struct Rewriter<E: Encoding> {
     rules: HashMap<(Pattern, E::Type), Rule<E>>,
-    convs: HashMap<(E::Type, E::Type), Conversion<E>>,
     chooser: Chooser<E::Type>,
     encs: HashMap<(Term, E::Type), E>,
     types: TermMap<BTreeSet<E::Type>>,
 }
 
 impl<E: Encoding> Rewriter<E> {
-    fn new(rws: Vec<Rule<E>>, convs: Vec<Conversion<E>>, chooser: Chooser<E::Type>) -> Self {
+    fn new(rws: Vec<Rule<E>>, chooser: Chooser<E::Type>) -> Self {
         let mut rules_table: HashMap<(Pattern, E::Type), Rule<E>> = HashMap::default();
         for r in rws {
             let prev = rules_table.insert((r.pattern().clone(), r.encoding_ty()), r);
@@ -22,18 +21,8 @@ impl<E: Encoding> Rewriter<E> {
                 panic!("Two rules for {:?}", p.pattern())
             }
         }
-        let mut convs_table: HashMap<(E::Type, E::Type), Conversion<E>> = Default::default();
-        for c in convs {
-            let from = c.from();
-            let to = c.to();
-            let prev = convs_table.insert((from, to), c);
-            if prev.is_some() {
-                panic!("Two conversion rules for {:?} -> {:?}", from, to);
-            }
-        }
         Self {
             rules: rules_table,
-            convs: convs_table,
             chooser,
             encs: Default::default(),
             types: Default::default(),
@@ -66,12 +55,8 @@ impl<E: Encoding> Rewriter<E> {
     fn ensure_enc(&mut self, c: &mut RewriteCtx, t: &Term, ty: E::Type) {
         if !self.encs.contains_key(&(t.clone(), ty)) {
             let from_ty = self.get_max_ty(t);
-            let cnv = self
-                .convs
-                .get(&(from_ty, ty))
-                .unwrap_or_else(|| panic!("No conversion {:?} -> {:?}", from_ty, ty));
             let e = self.encs.get(&(t.clone(), from_ty)).unwrap();
-            let new_e = cnv.apply(c, e);
+            let new_e = e.convert(c, ty);
             self.add(t.clone(), new_e);
         }
     }
@@ -100,13 +85,12 @@ impl<E: Encoding> Rewriter<E> {
 /// Apply some rules to translated a computation into a field.
 pub fn apply_rules<E: Encoding>(
     rws: Vec<Rule<E>>,
-    convs: Vec<Conversion<E>>,
     chooser: Chooser<E::Type>,
     field: FieldT,
     mut computation: Computation,
 ) -> Computation {
     assert!(computation.outputs.len() == 1);
-    let mut rewriter = Rewriter::new(rws, convs, chooser);
+    let mut rewriter = Rewriter::new(rws, chooser);
     let mut ctx = RewriteCtx::new(field.clone());
     for t in computation.terms_postorder() {
         rewriter.visit(&mut ctx, t);

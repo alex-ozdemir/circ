@@ -1,6 +1,6 @@
 //! Rules for lowering booleans and bit-vectors to a field
 
-use super::lang::{Conversion, Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
+use super::lang::{Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
 
 use circ_fields::FieldT;
@@ -18,7 +18,7 @@ pub enum Enc {
     /// A bit-vector as field-encoded bits.
     Bits(Vec<Term>),
     /// A bit-vector as a small field element.
-    Uint(Term),
+    Uint(Term, usize),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -71,9 +71,9 @@ impl Enc {
     }
     #[track_caller]
     #[allow(dead_code)]
-    pub(super) fn uint(&self) -> Term {
+    pub(super) fn uint(&self) -> (Term, usize) {
         match self {
-            Enc::Uint(b) => b.clone(),
+            Enc::Uint(b, u) => (b.clone(), *u),
             _ => panic!("Tried to unwrap {:?} as bv uint", self),
         }
     }
@@ -85,7 +85,7 @@ impl Encoding for Enc {
         match self {
             Enc::Bit(_) => Ty::Bit,
             Enc::Bits(_) => Ty::Bits,
-            Enc::Uint(_) => Ty::Uint,
+            Enc::Uint(_, _) => Ty::Uint,
         }
     }
 
@@ -132,12 +132,12 @@ impl Encoding for Enc {
                     .collect();
                 let sum = term(PF_ADD, bits.iter().enumerate().map(|(i, f)|
                         term![PF_MUL; pf_lit(ctx.field().new_v(Integer::from(1) << i)), f.clone()]).collect());
-                Enc::Uint(sum)
+                Enc::Uint(sum, w)
             }
         }
     }
 
-    fn convert(&self, _c: &mut RewriteCtx, to: Self::Type) -> Self {
+    fn convert(&self, ctx: &mut RewriteCtx, to: Self::Type) -> Self {
         match (self, to) {
             (Self::Bits(bs), Ty::Uint) => {
                 let field = FieldT::from(check(&bs[0]).as_pf());
@@ -147,13 +147,31 @@ impl Encoding for Enc {
                         .enumerate()
                         .map(|(i, f)| term![PF_MUL; pf_lit(field.new_v(Integer::from(1) << i)), f.clone()])
                         .collect(),
-                ))
+                ), bs.len())
             }
-            (Self::Uint(_), Ty::Bits) => {
-                todo!()
+            (Self::Uint(t, w), Ty::Bits) => {
+                let bv_t = term![Op::PfToBv(*w); t.clone()];
+                let bits: Vec<Term> = (0..*w)
+                    .map(|i| {
+                        let bit_t = term![Op::BvBit(i); bv_t.clone()];
+                        let v = ctx.fresh(&format!("conv_bit{}", i), bool_to_field(bit_t, ctx.field()));
+                        ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                        v
+                    })
+                    .collect();
+                let field = FieldT::from(check(&t).as_pf());
+                let sum = term(
+                    PF_ADD,
+                    bits.iter()
+                        .enumerate()
+                        .map(|(i, f)| term![PF_MUL; pf_lit(field.new_v(Integer::from(1) << i)), f.clone()])
+                        .collect(),
+                );
+                ctx.assert(term![EQ; sum, t.clone()]);
+                Enc::Bits(bits)
             }
             (Self::Bits(_), Ty::Bits) => self.clone(),
-            (Self::Uint(_), Ty::Uint) => self.clone(),
+            (Self::Uint(_, _), Ty::Uint) => self.clone(),
             (Self::Bit(_), Ty::Bit) => self.clone(),
             _ => unimplemented!("invalid conversion"),
         }
@@ -355,18 +373,6 @@ fn rw_bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
-fn bv_bits_to_uint(_ctx: &mut RewriteCtx, arg: &Enc) -> Enc {
-    let bits = arg.bits();
-    let field = FieldT::from(check(&bits[0]).as_pf());
-    Enc::Uint(term(
-        PF_ADD,
-        bits.iter()
-            .enumerate()
-            .map(|(i, f)| term![PF_MUL; pf_lit(field.new_v(Integer::from(1) << i)), f.clone()])
-            .collect(),
-    ))
-}
-
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use OpPattern as OpP;
@@ -415,9 +421,4 @@ pub fn choose(t: &Term, _: &[&BTreeSet<Ty>]) -> Ty {
         Op::BvBit(_) => Ty::Bits,
         _ => panic!(),
     }
-}
-
-/// Conversion functions
-pub fn conversions() -> Vec<Conversion<Enc>> {
-    vec![Conversion::new(Ty::Bits, Ty::Uint, bv_bits_to_uint)]
 }

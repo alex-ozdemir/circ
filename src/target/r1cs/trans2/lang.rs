@@ -112,13 +112,6 @@ pub struct Rule<E: Encoding> {
     fn_: Box<dyn Fn(&mut RewriteCtx, &Op, &[&E]) -> E>,
 }
 
-/// A rewrite rule for lowering IR to a finite-field assertion circuit.
-pub struct Conversion<E: Encoding> {
-    from: E::Type,
-    to: E::Type,
-    fn_: Box<dyn Fn(&mut RewriteCtx, &E) -> E>,
-}
-
 impl<E: Encoding> Rule<E> {
     /// Create a new rule.
     pub(super) fn new<F: Fn(&mut RewriteCtx, &Op, &[&E]) -> E + 'static>(
@@ -151,38 +144,6 @@ impl<E: Encoding> Rule<E> {
             debug_assert_eq!(a.type_(), self.encoding_ty());
         }
         (self.fn_)(c, t, args)
-    }
-}
-
-impl<E: Encoding> Conversion<E> {
-    /// Create a new rule.
-    #[allow(dead_code)]
-    pub(super) fn new<F: Fn(&mut RewriteCtx, &E) -> E + 'static>(
-        from: E::Type,
-        to: E::Type,
-        f: F,
-    ) -> Self {
-        Self {
-            from,
-            to,
-            fn_: Box::new(f),
-        }
-    }
-
-    /// The encoding this rule converts from
-    pub fn from(&self) -> E::Type {
-        self.from
-    }
-
-    /// The encoding this rule converts to
-    pub fn to(&self) -> E::Type {
-        self.to
-    }
-
-    /// Apply the rule
-    pub(super) fn apply(&self, c: &mut RewriteCtx, e: &E) -> E {
-        debug_assert_eq!(e.type_(), self.from());
-        (self.fn_)(c, e)
     }
 }
 
@@ -229,7 +190,7 @@ impl From<&Op> for OpPattern {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
 /// An abstraction of [Sort]
 pub enum SortPattern {
     /// See [Sort::Bool]
