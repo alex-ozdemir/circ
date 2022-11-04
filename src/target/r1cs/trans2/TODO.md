@@ -6,6 +6,7 @@ To do:
 * fix variable soundness VC
 
 Done:
+* FE filters for rule types
 * conversion completeness VC
 * variable completeness VC
 * conversion soundness VC
