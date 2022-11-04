@@ -1,5 +1,4 @@
 To do:
-* Improve FE output for param'd sort patterns
 * variable VCs
 * conversion VCs
 * bv lowering
@@ -8,6 +7,7 @@ To do:
 * better Pf2Bv in SMT BE
 
 Done:
+* Improve FE output for param'd sort patterns
 * re-org traits
 * basic Pf2Bv in SMT BE
 * verification FE filtering on ops, sorts

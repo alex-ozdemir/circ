@@ -83,14 +83,16 @@ fn gen_names(sorts: Vec<Sort>) -> Vec<(String, Sort)> {
 
 /// Create formulas that are SAT iff this rule is unsound.
 ///
-/// Each returned tuple is `(term, soundness)` where `term` is a term comprising a single operator
-/// application that `rule` would apply to, and `soundness` is a boolean term that is SAT iff the
-/// rule if unsound.
+/// Each returned tuple is `(term, sort, completeness)` where:
+///
+/// * `term` is a term comprising a single operator application that `rule` would apply to
+/// * `sort` is the sort that the term's operator may be parameterized on
+/// * `completeness` is a boolean term that is SAT iff the rule is unsound.
 pub fn soundness_terms<E: VerifiableEncoding>(
     rule: &Rule<E>,
     bnd: &Bound,
     field: &FieldT,
-) -> Vec<(Term, Term)> {
+) -> Vec<(Term, Sort, Term)> {
     let mut out = Vec::new();
     for sort in sorts(&rule.pattern().1, bnd) {
         for op in ops(&rule.pattern().0, &sort) {
@@ -124,7 +126,7 @@ pub fn soundness_terms<E: VerifiableEncoding>(
                 // assert that the output is mal-encoded
                 assertions.push(term![NOT; e_t.is_valid(t.clone())]);
 
-                out.push((t, mk_and(assertions)))
+                out.push((t, sort.clone(), mk_and(assertions)))
             }
         }
     }
@@ -133,14 +135,16 @@ pub fn soundness_terms<E: VerifiableEncoding>(
 
 /// Create formulas that are SAT iff this rule is incomplete.
 ///
-/// Each returned tuple is `(term, completeness)` where `term` is a term comprising a single
-/// operator application that `rule` would apply to, and `completeness` is a boolean term that is
-/// SAT iff the rule if incomplete.
+/// Each returned tuple is `(term, sort, completeness)` where:
+///
+/// * `term` is a term comprising a single operator application that `rule` would apply to
+/// * `sort` is the sort that the term's operator may be parameterized on
+/// * `completeness` is a boolean term that is SAT iff the rule is incomplete.
 pub fn completeness_terms<E: VerifiableEncoding>(
     rule: &Rule<E>,
     bnd: &Bound,
     field: &FieldT,
-) -> Vec<(Term, Term)> {
+) -> Vec<(Term, Sort, Term)> {
     let mut out = Vec::new();
     for sort in sorts(&rule.pattern().1, bnd) {
         for op in ops(&rule.pattern().0, &sort) {
@@ -174,7 +178,7 @@ pub fn completeness_terms<E: VerifiableEncoding>(
                 // assert that some contraint is broken
                 assertions.push(term![NOT; mk_and(ctx.assertions)]);
 
-                out.push((t, mk_and(assertions)))
+                out.push((t, sort.clone(), mk_and(assertions)))
             }
         }
     }

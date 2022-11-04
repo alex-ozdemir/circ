@@ -94,8 +94,8 @@ fn main() -> Result<(), String> {
                     Prop::Sound => soundness_terms,
                     Prop::Complete => completeness_terms,
                 };
-                for (t, soundness) in f(&r, &bnd, &DFL_T) {
-                    println!("check: {:?} {}", prop, t);
+                for (t, s, soundness) in f(&r, &bnd, &DFL_T) {
+                    println!("check: {:?} {} {}", prop, t, s);
                     if let Some(model) = find_model(&soundness) {
                         println!("ERROR: {}", prop.failure_message());
                         println!(
