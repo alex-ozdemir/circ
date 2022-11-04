@@ -29,25 +29,16 @@ impl<E: Encoding> Rewriter<E> {
         }
     }
     fn add(&mut self, t: Term, e: E) {
-        dbg!(&t);
-        dbg!(&e);
         let types = self.types.entry(t.clone()).or_default();
         if types.insert(e.type_()) {
             self.encs.insert((t, e.type_()), e);
         }
     }
-    #[track_caller]
     fn get_types(&self, t: &Term) -> &BTreeSet<E::Type> {
-        self.types
-            .get(t)
-            .unwrap_or_else(|| panic!("*No* encoding for term"))
+        self.types.get(t).unwrap()
     }
     fn get_max_ty(&self, t: &Term) -> E::Type {
-        *self
-            .get_types(t)
-            .iter()
-            .last()
-            .unwrap_or_else(|| panic!("*No* encoding for term"))
+        *self.get_types(t).iter().last().unwrap()
     }
     fn get_enc(&self, t: &Term, ty: E::Type) -> &E {
         self.encs.get(&(t.clone(), ty)).unwrap()
@@ -55,8 +46,7 @@ impl<E: Encoding> Rewriter<E> {
     fn ensure_enc(&mut self, c: &mut RewriteCtx, t: &Term, ty: E::Type) {
         if !self.encs.contains_key(&(t.clone(), ty)) {
             let from_ty = self.get_max_ty(t);
-            let e = self.encs.get(&(t.clone(), from_ty)).unwrap();
-            let new_e = e.convert(c, ty);
+            let new_e = self.encs.get(&(t.clone(), from_ty)).unwrap().convert(c, ty);
             self.add(t.clone(), new_e);
         }
     }
@@ -96,10 +86,7 @@ pub fn apply_rules<E: Encoding>(
         rewriter.visit(&mut ctx, t);
     }
     let ty = rewriter.get_max_ty(&computation.outputs()[0]);
-    let e = rewriter
-        .encs
-        .get(&(computation.outputs()[0].clone(), ty))
-        .unwrap();
+    let e = rewriter.get_enc(&computation.outputs()[0].clone(), ty);
     ctx.assert(e.as_bool_term());
     computation.outputs = vec![term(AND, ctx.assertions)];
     for (value, name) in ctx.new_variables {
