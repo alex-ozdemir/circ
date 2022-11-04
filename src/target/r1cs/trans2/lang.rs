@@ -14,7 +14,14 @@ use rug::Integer;
 /// Encoding types should be ordered by cost. I.e. earlier types should be cheaper to produce. When
 /// encodings of different types must be converted to a common type, all will be converted to the
 /// cheapest.
-pub trait EncodingType: Copy + Hash + Eq + Debug + Ord {}
+pub trait EncodingType: Copy + Hash + Eq + Debug + Ord + 'static {
+    /// Get the sort (pattern) for this encoding type.
+    fn sort(&self) -> SortPattern;
+    /// A list of all encoding types.
+    fn all() -> Vec<Self>;
+    /// Get the default type for a variable.
+    fn default_for_sort(s: &Sort) -> Self;
+}
 
 /// The encoding itself.
 pub trait Encoding: Clone + Debug {
@@ -24,8 +31,20 @@ pub trait Encoding: Clone + Debug {
     fn type_(&self) -> Self::Type;
     /// Output this encoding as a boolean term.
     fn as_bool_term(&self) -> Term;
+    /// Convert this encoding to a new one of the same term.
+    ///
+    /// Will only be called with a type `to` whose sort agrees.
+    ///
+    /// Must return an encoding of the type `to`.
+    fn convert(&self, c: &mut RewriteCtx, to: Self::Type) -> Self;
     /// Embed a variable.
-    fn variable(c: &mut RewriteCtx, name: &str, sort: &Sort) -> Self;
+    ///
+    /// Must return an `e` such that `e.type_()` is equal to `ty`.
+    fn variable(c: &mut RewriteCtx, name: &str, sort: &Sort, ty: Self::Type) -> Self;
+    /// The above, but with the default encoding type.
+    fn d_variable(c: &mut RewriteCtx, name: &str, sort: &Sort) -> Self {
+        Self::variable(c, name, sort, <Self::Type as EncodingType>::default_for_sort(sort))
+    }
 }
 
 /// Chooses an encoding for a term given the available encodings for the arguments.

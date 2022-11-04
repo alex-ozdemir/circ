@@ -77,7 +77,7 @@ impl<E: Encoding> Rewriter<E> {
     }
     fn visit(&mut self, c: &mut RewriteCtx, t: Term) {
         let new = if let Op::Var(name, sort) = &t.op {
-            E::variable(c, name, sort)
+            E::d_variable(c, name, sort)
         } else {
             let p = Pattern::from(&t);
             let available: Vec<&BTreeSet<E::Type>> =

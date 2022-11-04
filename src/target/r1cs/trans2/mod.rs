@@ -12,7 +12,7 @@ pub mod ver;
 pub fn apply(field: &FieldT, computation: Computation) -> Computation {
     runtime::apply_rules(
         rules::rules(),
-        vec![],
+        rules::conversions(),
         Box::new(rules::choose),
         field.clone(),
         computation,

@@ -1,6 +1,6 @@
 //! Rules for lowering booleans and bit-vectors to a field
 
-use super::lang::{Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
+use super::lang::{Conversion, Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
 
 use circ_fields::FieldT;
@@ -32,7 +32,27 @@ pub enum Ty {
     Uint,
 }
 
-impl EncodingType for Ty {}
+impl EncodingType for Ty {
+    fn sort(&self) -> SortPattern {
+        match self {
+            Ty::Bit => SortPattern::Bool,
+            Ty::Bits => SortPattern::BitVector,
+            Ty::Uint => SortPattern::BitVector,
+        }
+    }
+
+    fn all() -> Vec<Self> {
+        vec![Self::Bit, Self::Bits, Self::Uint]
+    }
+
+    fn default_for_sort(s: &Sort) -> Self {
+        match s {
+            Sort::Bool => Ty::Bit,
+            Sort::BitVector(_) => Ty::Bits,
+            _ => unimplemented!(),
+        }
+    }
+}
 
 impl Enc {
     #[track_caller]
@@ -78,28 +98,64 @@ impl Encoding for Enc {
         }
     }
 
-    fn variable(ctx: &mut RewriteCtx, name: &str, sort: &Sort) -> Self {
-        match sort {
-            Sort::Bool => {
-                let t = leaf_term(Op::Var(name.into(), sort.clone()));
+    fn variable(ctx: &mut RewriteCtx, name: &str, sort: &Sort, ty: Ty) -> Self {
+        assert_eq!(SortPattern::from(sort), ty.sort());
+        let t = leaf_term(Op::Var(name.into(), sort.clone()));
+        match ty {
+            Ty::Bit => {
                 let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
                 ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
                 Enc::Bit(v)
             }
-            Sort::BitVector(w) => {
-                let bv_t = leaf_term(Op::Var(name.into(), sort.clone()));
+            Ty::Bits => {
+                let w = sort.as_bv();
                 Enc::Bits(
-                    (0..*w)
+                    (0..w)
                         .map(|i| {
-                            let t = term![Op::BvBit(i); bv_t.clone()];
-                            let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
+                            let bit_t = term![Op::BvBit(i); t.clone()];
+                            let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()));
                             ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
                             v
                         })
                         .collect(),
                 )
             }
-            s => unimplemented!("variable sort {}", s),
+            Ty::Uint => {
+                let w = sort.as_bv();
+                let bits: Vec<Term> = (0..w)
+                    .map(|i| {
+                        let bit_t = term![Op::BvBit(i); t.clone()];
+                        let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()));
+                        ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                        v
+                    })
+                    .collect();
+                let sum = term(PF_ADD, bits.iter().enumerate().map(|(i, f)|
+                        term![PF_MUL; pf_lit(ctx.field().new_v(Integer::from(1) << i)), f.clone()]).collect());
+                Enc::Uint(sum)
+            }
+        }
+    }
+
+    fn convert(&self, _c: &mut RewriteCtx, to: Self::Type) -> Self {
+        match (self, to) {
+            (Self::Bits(bs), Ty::Uint) => {
+                let field = FieldT::from(check(&bs[0]).as_pf());
+                Enc::Uint(term(
+                    PF_ADD,
+                    bs.iter()
+                        .enumerate()
+                        .map(|(i, f)| term![PF_MUL; pf_lit(field.new_v(Integer::from(1) << i)), f.clone()])
+                        .collect(),
+                ))
+            }
+            (Self::Uint(_), Ty::Bits) => {
+                todo!()
+            }
+            (Self::Bits(_), Ty::Bits) => self.clone(),
+            (Self::Uint(_), Ty::Uint) => self.clone(),
+            (Self::Bit(_), Ty::Bit) => self.clone(),
+            _ => unimplemented!("invalid conversion"),
         }
     }
 }
@@ -299,6 +355,18 @@ fn rw_bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
+fn bv_bits_to_uint(_ctx: &mut RewriteCtx, arg: &Enc) -> Enc {
+    let bits = arg.bits();
+    let field = FieldT::from(check(&bits[0]).as_pf());
+    Enc::Uint(term(
+        PF_ADD,
+        bits.iter()
+            .enumerate()
+            .map(|(i, f)| term![PF_MUL; pf_lit(field.new_v(Integer::from(1) << i)), f.clone()])
+            .collect(),
+    ))
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use OpPattern as OpP;
@@ -347,4 +415,9 @@ pub fn choose(t: &Term, _: &[&BTreeSet<Ty>]) -> Ty {
         Op::BvBit(_) => Ty::Bits,
         _ => panic!(),
     }
+}
+
+/// Conversion functions
+pub fn conversions() -> Vec<Conversion<Enc>> {
+    vec![Conversion::new(Ty::Bits, Ty::Uint, bv_bits_to_uint)]
 }

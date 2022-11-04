@@ -1,10 +1,14 @@
 To do:
-* bit-vector lower
+* Improve FE output for param'd sort patterns
+* variable VCs
+* conversion VCs
+* bv lowering
 * field flatten
 * clean visibilities
 * better Pf2Bv in SMT BE
 
 Done:
+* re-org traits
 * basic Pf2Bv in SMT BE
 * verification FE filtering on ops, sorts
 * completeness
