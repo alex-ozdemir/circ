@@ -170,6 +170,27 @@ pub enum OpPattern {
     PfUnOp(PfUnOp),
     /// See [Op::BvBit].
     BvBit,
+
+    /// See [Op::BvBinOp].
+    BvBinOp(BvBinOp),
+    /// See [Op::BvBinPred].
+    BvBinPred(BvBinPred),
+    /// See [Op::BvNaryOp].
+    BvNaryOp(BvNaryOp),
+    /// See [Op::BvUnOp].
+    BvUnOp(BvUnOp),
+    /// See [Op::BoolToBv].
+    BoolToBv,
+    /// See [Op::BvExtract].
+    BvExtract,
+    /// See [Op::BvConcat].
+    BvConcat,
+    /// See [Op::BvUext].
+    BvUext,
+    /// See [Op::BvSext].
+    BvSext,
+    /// See [Op::PfToBv].
+    PfToBv,
 }
 
 impl From<&Op> for OpPattern {
@@ -185,6 +206,16 @@ impl From<&Op> for OpPattern {
             Op::PfNaryOp(b) => OpPattern::PfNaryOp(*b),
             Op::PfUnOp(b) => OpPattern::PfUnOp(*b),
             Op::BvBit(_) => OpPattern::BvBit,
+            Op::BvUnOp(b) => OpPattern::BvUnOp(*b),
+            Op::BvNaryOp(b) => OpPattern::BvNaryOp(*b),
+            Op::BvBinPred(b) => OpPattern::BvBinPred(*b),
+            Op::BvBinOp(b) => OpPattern::BvBinOp(*b),
+            Op::BvExtract(..) => OpPattern::BvExtract,
+            Op::BvConcat => OpPattern::BvConcat,
+            Op::BvUext(..) => OpPattern::BvUext,
+            Op::BvSext(..) => OpPattern::BvSext,
+            Op::PfToBv(..) => OpPattern::PfToBv,
+            Op::BoolToBv => OpPattern::BoolToBv,
             _ => unimplemented!("op {}", op),
         }
     }

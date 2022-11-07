@@ -73,6 +73,16 @@ fn op_pat_string(o: &OpPattern) -> String {
         OpPattern::PfNaryOp(o) => format!("{}", o),
         OpPattern::PfUnOp(o) => format!("{}", o),
         OpPattern::BvBit => format!("bit"),
+        OpPattern::BvBinOp(o) => format!("{}", o),
+        OpPattern::BvBinPred(o) => format!("{}", o),
+        OpPattern::BvNaryOp(o) => format!("{}", o),
+        OpPattern::BvUnOp(o) => format!("{}", o),
+        OpPattern::BoolToBv => format!("bool2bv"),
+        OpPattern::BvExtract => format!("extract"),
+        OpPattern::BvConcat => format!("concat"),
+        OpPattern::BvUext => format!("uext"),
+        OpPattern::BvSext => format!("sext"),
+        OpPattern::PfToBv => format!("pf2bv"),
     }
 }
 

@@ -383,6 +383,10 @@ fn bv_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     )
 }
 
+fn bv_not(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bits(args[0].bits().iter().map(|b| bool_neg(b.clone())).collect())
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use OpPattern as OpP;
@@ -416,6 +420,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(OpP::BvBit, BitVector, Ty::Bits, Box::new(bv_bit)),
         // TODO: heterogeneous input encodings
         //Rule::new(OpP::Ite, BitVector, Ty::Uint, Box::new(bv_ite)),
+        Rule::new(OpP::BvUnOp(BvUnOp::Not), BitVector, Ty::Bits, Box::new(bv_not)),
     ]
 }
 
@@ -431,6 +436,7 @@ pub fn choose(t: &Term, _: &[&BTreeSet<Ty>]) -> Ty {
         Op::Const(Value::Bool(_)) => Ty::Bit,
         Op::Const(Value::BitVector(_)) => Ty::Bits,
         Op::BvBit(_) => Ty::Bits,
+        Op::BvUnOp(BvUnOp::Not) => Ty::Bits,
         _ => panic!(),
     }
 }

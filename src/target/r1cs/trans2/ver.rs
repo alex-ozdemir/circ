@@ -42,6 +42,16 @@ fn ops(o: &OpPattern, s: &Sort) -> Vec<Op> {
         OpPattern::PfUnOp(o) => vec![Op::PfUnOp(*o)],
         OpPattern::PfNaryOp(o) => vec![Op::PfNaryOp(*o)],
         OpPattern::BvBit => (0..s.as_bv()).map(|i| Op::BvBit(i)).collect(),
+        OpPattern::BvBinOp(o) => vec![Op::BvBinOp(*o)],
+        OpPattern::BvBinPred(o) => vec![Op::BvBinPred(*o)],
+        OpPattern::BvNaryOp(o) => vec![Op::BvNaryOp(*o)],
+        OpPattern::BvUnOp(o) => vec![Op::BvUnOp(*o)],
+        OpPattern::BoolToBv => vec![Op::BoolToBv],
+        OpPattern::BvExtract => todo!(),
+        OpPattern::BvConcat => todo!(),
+        OpPattern::BvUext => todo!(),
+        OpPattern::BvSext => todo!(),
+        OpPattern::PfToBv => todo!(),
     }
 }
 

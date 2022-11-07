@@ -153,7 +153,7 @@ impl Expr2Smt<()> for TermData {
                 write!(w, "{}", SmtDisp(&*self.cs[0]))?;
                 false
             }
-            Op::BvBinPred(_) | Op::BvBinOp(_) | Op::BvNaryOp(_) | Op::BvConcat => {
+            Op::BvUnOp(_) | Op::BvBinPred(_) | Op::BvBinOp(_) | Op::BvNaryOp(_) | Op::BvConcat => {
                 write!(w, "({}", self.op)?;
                 true
             }
