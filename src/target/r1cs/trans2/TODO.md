@@ -3,7 +3,7 @@ To do:
 * field flatten
 * clean visibilities
 * better Pf2Bv in SMT BE
-* fix variable soundness VC
+* fix variable soundness VC (universal quantifiers)
 
 Done:
 * FE filters for rule types

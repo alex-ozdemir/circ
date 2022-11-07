@@ -159,6 +159,9 @@ pub enum Op {
     /// Cyclic right rotation of an array
     /// i.e. (Rot(1) [1,2,3,4]) --> ([4,1,2,3])
     Rot(usize),
+
+    /// Quantifier
+    Quant(Quant),
 }
 
 /// Boolean AND
@@ -290,6 +293,7 @@ impl Op {
             Op::Map(op) => op.arity(),
             Op::Call(_, args, _) => Some(args.len()),
             Op::Rot(_) => Some(1),
+            Op::Quant(_) => Some(1),
         }
     }
 }
@@ -339,6 +343,7 @@ impl Display for Op {
             Op::Map(op) => write!(f, "(map({}))", op),
             Op::Call(name, _, _) => write!(f, "fn:{}", name),
             Op::Rot(i) => write!(f, "(rot {})", i),
+            Op::Quant(q) => write!(f, "{}", q),
         }
     }
 }
@@ -668,6 +673,49 @@ impl Display for IntBinPred {
             IntBinPred::Le => write!(f, "<="),
             IntBinPred::Ge => write!(f, ">="),
         }
+    }
+}
+
+/// A quantifier type
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
+pub enum QuantType {
+    /// For-all
+    Forall,
+    /// There exists
+    Exists,
+}
+
+impl Display for QuantType {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            QuantType::Forall => write!(f, "forall"),
+            QuantType::Exists => write!(f, "exists"),
+        }
+    }
+}
+
+/// A quantifier binding
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Quant {
+    /// The type, see [QuantType].
+    pub ty: QuantType,
+    /// Variable (name, sort) pairs
+    pub bindings: Vec<(String, Sort)>,
+}
+
+impl Display for Quant {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{} (", self.ty)?;
+        let mut first = true;
+        for (n, s) in &self.bindings {
+            if first {
+                first = false;
+            } else {
+                write!(f, " ")?;
+            }
+            write!(f, "({} {})", n, s)?;
+        }
+        write!(f, ")")
     }
 }
 
@@ -1713,7 +1761,7 @@ fn eval_value(vs: &mut TermMap<Value>, h: &FxHashMap<String, Value>, c: Term) ->
             }
             Value::Array(res)
         }
-
+        Op::Quant(_) => panic!("Cannot evaluate quantifiers"),
         o => unimplemented!("eval: {:?}", o),
     };
     vs.insert(c.clone(), v.clone());

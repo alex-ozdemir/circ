@@ -41,6 +41,8 @@
 //!     * set_default_modulus: `(set_default_modulus I T)`
 //!       * within term T, I will be the default field modulus
 //!       * NB: after the closing paren, I is *no longer* the default modulus
+//!     * forall: `(forall ((X1 S1) ... (Xn Sn)) T)`
+//!     * exists: `(exists ((X1 S1) ... (Xn Sn)) T)`
 //!     * operator: `(O T1 ... TN)`
 //!   * Operator `O`:
 //!     * Plain operators: (`bvmul`, `and`, ...)
@@ -175,6 +177,7 @@ enum CtrlOp {
     TupleValue,
     ArrayValue,
     SetDefaultModulus,
+    Quant(QuantType),
 }
 
 impl<'src> IrInterp<'src> {
@@ -220,6 +223,8 @@ impl<'src> IrInterp<'src> {
             Leaf(Ident, b"#t") => Err(CtrlOp::TupleValue),
             Leaf(Ident, b"#a") => Err(CtrlOp::ArrayValue),
             Leaf(Ident, b"set_default_modulus") => Err(CtrlOp::SetDefaultModulus),
+            Leaf(Ident, b"forall") => Err(CtrlOp::Quant(QuantType::Forall)),
+            Leaf(Ident, b"exists") => Err(CtrlOp::Quant(QuantType::Exists)),
             Leaf(Ident, b"ite") => Ok(Op::Ite),
             Leaf(Ident, b"=") => Ok(Op::Eq),
             Leaf(Ident, b"bvsub") => Ok(Op::BvBinOp(BvBinOp::Sub)),
@@ -509,6 +514,26 @@ impl<'src> IrInterp<'src> {
                         let t = self.term(&tts[2]);
                         self.modulus_stack.pop();
                         t
+                    }
+                    Err(CtrlOp::Quant(q)) => {
+                        assert_eq!(
+                            tts.len(),
+                            3,
+                            "A decl should have 2 arguments: (declare ((v1 s1) ... (vn sn)) t), found {:#?}",
+                            tts
+                        );
+                        let bindings = self.decl_list(&tts[1]);
+                        let names_and_sorts: Vec<(String, Sort)> = bindings
+                            .iter()
+                            .map(|i| (from_utf8(i).unwrap().into(), check(self.get_binding(i))))
+                            .collect();
+                        let t = self.term(&tts[2]);
+                        self.unbind(bindings);
+                        let o = Op::Quant(Quant {
+                            ty: q,
+                            bindings: names_and_sorts,
+                        });
+                        term(o, vec![t])
                     }
                     Ok(o) => term(o, tts[1..].iter().map(|tti| self.term(tti)).collect()),
                 }
@@ -853,5 +878,21 @@ mod test {
         let s = serialize_computation(&c);
         let c2 = parse_computation(s.as_bytes());
         assert_eq!(c, c2);
+    }
+
+    #[test]
+    fn quant_roundtrip() {
+        let t = parse_term(
+            b"
+        (declare (
+         (a bool)
+         (b bool)
+         )
+         (forall ((c bool)) (exists ((d bool) (e bool)) (=> (= a c) (= b (or d e))))))",
+        );
+        let s = serialize_term(&t);
+        println!("{}", s);
+        let t2 = parse_term(s.as_bytes());
+        assert_eq!(t, t2);
     }
 }
