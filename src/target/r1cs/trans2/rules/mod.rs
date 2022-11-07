@@ -191,7 +191,7 @@ fn bool_to_field(t: Term, f: &FieldT) -> Term {
     term![ITE; t, pf_lit(f.new_v(1)), pf_lit(f.new_v(0))]
 }
 
-fn rw_is_zero(ctx: &mut RewriteCtx, x: Term) -> Term {
+fn is_zero(ctx: &mut RewriteCtx, x: Term) -> Term {
     let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
     // is_zero_inv * x == 1 - is_zero
     // is_zero * x == 0
@@ -205,12 +205,12 @@ fn rw_is_zero(ctx: &mut RewriteCtx, x: Term) -> Term {
     is_zero
 }
 
-fn rw_ensure_bit(ctx: &mut RewriteCtx, b: Term) {
+fn ensure_bit(ctx: &mut RewriteCtx, b: Term) {
     let b_minus_one = term![PF_ADD; b.clone(), term![PF_NEG; ctx.one().clone()]];
     ctx.assert(term![EQ; term![PF_MUL; b_minus_one, b], ctx.zero().clone()]);
 }
 
-fn rw_bit_split(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Vec<Term> {
+fn bit_split(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Vec<Term> {
     let x_bv = term![Op::PfToBv(n); x.clone()];
     let bits: Vec<Term> = (0..n)
         .map(|i| {
@@ -225,7 +225,7 @@ fn rw_bit_split(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Vec<Te
         .iter()
         .enumerate()
         .map(|(i, b)| {
-            rw_ensure_bit(ctx, b.clone());
+            ensure_bit(ctx, b.clone());
             term![PF_MUL; ctx.f_const(Integer::from(1) << i), b.clone()]
         })
         .collect();
@@ -233,7 +233,7 @@ fn rw_bit_split(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Vec<Te
     bits
 }
 
-fn rw_or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
+fn or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
     loop {
         match args.len() {
             0 => return ctx.zero().clone(),
@@ -250,7 +250,7 @@ fn rw_or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
                 } else {
                     i
                 };
-                let new = bool_neg(rw_is_zero(
+                let new = bool_neg(is_zero(
                     ctx,
                     term(PF_ADD, args.drain(i - take..).collect()),
                 ));
@@ -261,18 +261,18 @@ fn rw_or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
     }
 }
 
-fn rw_or(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(rw_or_helper(ctx, args.iter().map(|a| a.bit()).collect()))
+fn or(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(or_helper(ctx, args.iter().map(|a| a.bit()).collect()))
 }
 
-fn rw_and(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(bool_neg(rw_or_helper(
+fn and(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bool_neg(or_helper(
         ctx,
         args.iter().map(|a| bool_neg(a.bit())).collect(),
     )))
 }
 
-fn rw_bool_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bool_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(term![PF_ADD;
         ctx.one().clone(),
         term![PF_NEG; args[0].bit()],
@@ -280,7 +280,7 @@ fn rw_bool_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
         term![PF_MUL; ctx.f_const(2), args[0].bit(), args[1].bit()]])
 }
 
-fn rw_xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     let mut args: Vec<Term> = args.iter().map(|a| a.bit()).collect();
     Enc::Bit(loop {
         match args.len() {
@@ -301,29 +301,29 @@ fn rw_xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
                 };
                 let partial_sum = term(PF_ADD, args.drain(i - take..).collect());
                 let num_bits = ((partial_sum.cs.len() as f64) + 0.2f64).log2() as usize + 1;
-                let bits = rw_bit_split(ctx, "xor", partial_sum, num_bits);
+                let bits = bit_split(ctx, "xor", partial_sum, num_bits);
                 args.push(bits.into_iter().next().unwrap());
             }
         };
     })
 }
 
-fn rw_not(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn not(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bool_neg(args[0].bit()))
 }
 
-fn rw_implies(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn implies(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bool_neg(
         term![PF_MUL; args[0].bit(), bool_neg(args[1].bit())],
     ))
 }
 
-fn rw_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     let diff = term![PF_ADD; args[1].bit(), term![PF_NEG; args[2].bit()]];
     Enc::Bit(term![PF_ADD; term![PF_MUL; args[0].bit(), diff], args[2].bit()])
 }
 
-fn rw_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
+fn bool_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     if let Op::Const(Value::Bool(b)) = op {
         Enc::Bit(if *b {
             ctx.one().clone()
@@ -335,7 +335,7 @@ fn rw_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
-fn rw_maj(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn maj(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     if let [a, b, c] = args {
         // m = ab + bc + ca - 2abc
         // m = ab + c(b + a - 2ab)
@@ -348,7 +348,7 @@ fn rw_maj(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
-fn rw_bv_bit(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+fn bv_bit(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     if let Op::BvBit(i) = op {
         Enc::Bit(args[0].bits()[*i].clone())
     } else {
@@ -356,7 +356,7 @@ fn rw_bv_bit(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
-fn rw_bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
+fn bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     if let Op::Const(Value::BitVector(bv)) = op {
         Enc::Bits(
             (0..bv.width())
@@ -375,7 +375,7 @@ fn rw_bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
 }
 
 #[allow(dead_code)]
-fn rw_bv_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     let diff = term![PF_ADD; args[1].uint().0, term![PF_NEG; args[2].uint().0]];
     Enc::Uint(
         term![PF_ADD; term![PF_MUL; args[0].bit(), diff], args[2].uint().0],
@@ -388,34 +388,34 @@ pub fn rules() -> Vec<Rule<Enc>> {
     use OpPattern as OpP;
     use SortPattern::{BitVector, Bool};
     vec![
-        Rule::new(OpP::Const, Bool, Ty::Bit, Box::new(rw_const)),
-        Rule::new(OpP::Eq, Bool, Ty::Bit, Box::new(rw_bool_eq)),
-        Rule::new(OpP::Ite, Bool, Ty::Bit, Box::new(rw_ite)),
-        Rule::new(OpP::Not, Bool, Ty::Bit, Box::new(rw_not)),
-        Rule::new(OpP::BoolMaj, Bool, Ty::Bit, Box::new(rw_maj)),
-        Rule::new(OpP::Implies, Bool, Ty::Bit, Box::new(rw_implies)),
+        Rule::new(OpP::Const, Bool, Ty::Bit, Box::new(bool_const)),
+        Rule::new(OpP::Eq, Bool, Ty::Bit, Box::new(bool_eq)),
+        Rule::new(OpP::Ite, Bool, Ty::Bit, Box::new(ite)),
+        Rule::new(OpP::Not, Bool, Ty::Bit, Box::new(not)),
+        Rule::new(OpP::BoolMaj, Bool, Ty::Bit, Box::new(maj)),
+        Rule::new(OpP::Implies, Bool, Ty::Bit, Box::new(implies)),
         Rule::new(
             OpP::BoolNaryOp(BoolNaryOp::Xor),
             Bool,
             Ty::Bit,
-            Box::new(rw_xor),
+            Box::new(xor),
         ),
         Rule::new(
             OpP::BoolNaryOp(BoolNaryOp::Or),
             Bool,
             Ty::Bit,
-            Box::new(rw_or),
+            Box::new(or),
         ),
         Rule::new(
             OpP::BoolNaryOp(BoolNaryOp::And),
             Bool,
             Ty::Bit,
-            Box::new(rw_and),
+            Box::new(and),
         ),
-        Rule::new(OpP::Const, BitVector, Ty::Bits, Box::new(rw_bv_const)),
-        Rule::new(OpP::BvBit, BitVector, Ty::Bits, Box::new(rw_bv_bit)),
+        Rule::new(OpP::Const, BitVector, Ty::Bits, Box::new(bv_const)),
+        Rule::new(OpP::BvBit, BitVector, Ty::Bits, Box::new(bv_bit)),
         // TODO: heterogeneous input encodings
-        //Rule::new(OpP::Ite, BitVector, Ty::Uint, Box::new(rw_bv_ite)),
+        //Rule::new(OpP::Ite, BitVector, Ty::Uint, Box::new(bv_ite)),
     ]
 }
 
