@@ -3,9 +3,9 @@ To do:
 * field flatten
 * clean visibilities
 * better Pf2Bv in SMT BE
-* fix variable soundness VC (universal quantifiers)
 
 Done:
+* fix variable soundness VC (universal quantifiers)
 * FE filters for rule types
 * conversion completeness VC
 * variable completeness VC

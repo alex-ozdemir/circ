@@ -19,26 +19,18 @@ impl VerifiableEncoding for Enc {
             }
             Enc::Bits(fs) => {
                 let field = FieldT::from(check(&fs[0]).as_pf());
-                let all_bits = term(
-                    AND,
-                    fs.iter()
-                        .map(|f| term![EQ; term![PF_MUL; f.clone(), f.clone()], f.clone()])
-                        .collect(),
-                );
-                let sum = term(PF_ADD, fs.iter().enumerate().map(|(i, f)|
-                        term![PF_MUL; pf_lit(field.new_v(Integer::from(1) << i)), f.clone()]).collect());
                 let one = pf_lit(field.new_v(1));
                 let zero = pf_lit(field.new_v(0));
-                let sum2 = term(
-                    PF_ADD,
-                    (0..fs.len())
-                        .map(|i| {
-                            term![PF_MUL; pf_lit(field.new_v(Integer::from(1) << i)),
-                            term![ITE; term![Op::BvBit(i); t.clone()], one.clone(), zero.clone()]]
+                term(
+                    AND,
+                    fs.iter()
+                        .enumerate()
+                        .map(|(i, f)| {
+                            let is1 = term![EQ; term![Op::BvExtract(i,i); t.clone()], bv_lit(1,1)];
+                            term![EQ; term![ITE; is1, one.clone(), zero.clone()], f.clone()]
                         })
                         .collect(),
-                );
-                term![AND; term![EQ; sum, sum2], all_bits]
+                )
             }
             Enc::Uint(f, _) => {
                 let field = FieldT::from(check(f).as_pf());

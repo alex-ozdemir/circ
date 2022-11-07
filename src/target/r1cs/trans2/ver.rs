@@ -193,8 +193,6 @@ pub fn completeness_terms<E: VerifiableEncoding>(
 /// * `sort` is the sort that the term's operator may be parameterized on
 /// * `soundness` is a boolean term that is SAT iff the rule is unsound.
 pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound, field: &FieldT) -> Vec<(Sort, Term)> {
-    // TODO: broken. Need a universal quant?
-    // b/c you want to say "this is valid for no input?"
     let mut out = Vec::new();
     let sort_patterns: BTreeSet<SortPattern> = <E::Type as EncodingType>::all()
         .into_iter()
@@ -205,10 +203,13 @@ pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound, field: &FieldT) -> 
             let mut ctx = RewriteCtx::new(field.clone());
             let name = "a".to_owned();
             let e = E::d_variable(&mut ctx, &name, &sort);
-            let var = leaf_term(Op::Var(name, sort.clone()));
-            let is_valid = e.is_valid(var);
+            let var = leaf_term(Op::Var(name.clone(), sort.clone()));
+            let no_valid = term![NOT; term![Op::Quant(Quant {
+                ty: QuantType::Exists,
+                bindings: vec![(name, sort.clone())],
+            }); e.is_valid(var)]];
             let mut assertions = ctx.assertions;
-            assertions.push(term![NOT; is_valid]);
+            assertions.push(no_valid);
             out.push((sort, mk_and(assertions)));
         }
     }

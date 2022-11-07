@@ -4,7 +4,7 @@ use circ::target::r1cs::trans2::{
     rules::{rules, Enc},
     ver::{
         c_completeness_terms, c_soundness_terms, completeness_terms, soundness_terms,
-        v_completeness_terms, Bound,
+        v_completeness_terms, v_soundness_terms, Bound,
     },
 };
 use circ::target::smt::find_model;
@@ -144,6 +144,23 @@ fn main() -> Result<(), String> {
     if rule_types.contains(&RuleType::Var) {
         if props.contains(&Prop::Complete) {
             for (s, t) in v_completeness_terms::<Enc>(&bnd, &DFL_T) {
+                println!("check: variable {}", s);
+                if let Some(model) = find_model(&t) {
+                    println!("ERROR");
+                    println!(
+                        "Formula:\n{}\n",
+                        pp_sexpr(serialize_term(&t).as_bytes(), 100)
+                    );
+                    println!(
+                        "Counterexample: {}",
+                        serialize_value_map(&model.into_iter().collect())
+                    );
+                    return Err(format!("ERROR"));
+                }
+            }
+        }
+        if props.contains(&Prop::Sound) {
+            for (s, t) in v_soundness_terms::<Enc>(&bnd, &DFL_T) {
                 println!("check: variable {}", s);
                 if let Some(model) = find_model(&t) {
                     println!("ERROR");
