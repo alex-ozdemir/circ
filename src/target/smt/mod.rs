@@ -214,6 +214,14 @@ impl Expr2Smt<()> for TermData {
                 write!(w, "({}", o)?;
                 true
             }
+            Op::Quant(q) => {
+                write!(w, "({} (", q.ty)?;
+                for (n, s) in &q.bindings {
+                    write!(w, "({} {})", n, SmtSortDisp(&s))?;
+                }
+                write!(w, ") ")?;
+                true
+            }
             o => panic!("Cannot give {} to SMT solver", o),
         };
         if s_expr_children {
@@ -962,5 +970,12 @@ mod test {
                 .collect()
             )
         )
+    }
+    #[test]
+    fn quant() {
+        let t = text::parse_term(b"(forall ((a bool)) (exists ((b bool)) (= a b)))");
+        assert_eq!(check_sat(&t), true);
+        let t2 = text::parse_term(b"(exists ((a bool)) (forall ((b bool)) (= a b)))");
+        assert_eq!(check_sat(&t2), false);
     }
 }
