@@ -157,6 +157,10 @@ impl Expr2Smt<()> for TermData {
                 write!(w, "({}", self.op)?;
                 true
             }
+            Op::BvExtract(high, low) => {
+                write!(w, "((_ extract {} {})", high, low)?;
+                true
+            }
             Op::BvUext(s) => {
                 write!(w, "((_ zero_extend {})", s)?;
                 true
