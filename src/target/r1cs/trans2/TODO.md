@@ -1,5 +1,6 @@
 To do:
 * bv lowering
+* heterogeneous input encodings (BV ITE)
 * field flatten
 * clean visibilities
 * better Pf2Bv in SMT BE

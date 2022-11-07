@@ -154,7 +154,8 @@ impl Encoding for Enc {
                 let bits: Vec<Term> = (0..*w)
                     .map(|i| {
                         let bit_t = term![Op::BvBit(i); bv_t.clone()];
-                        let v = ctx.fresh(&format!("conv_bit{}", i), bool_to_field(bit_t, ctx.field()));
+                        let v =
+                            ctx.fresh(&format!("conv_bit{}", i), bool_to_field(bit_t, ctx.field()));
                         ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
                         v
                     })
@@ -373,6 +374,15 @@ fn rw_bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
+#[allow(dead_code)]
+fn rw_bv_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let diff = term![PF_ADD; args[1].uint().0, term![PF_NEG; args[2].uint().0]];
+    Enc::Uint(
+        term![PF_ADD; term![PF_MUL; args[0].bit(), diff], args[2].uint().0],
+        args[1].uint().1,
+    )
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use OpPattern as OpP;
@@ -404,6 +414,8 @@ pub fn rules() -> Vec<Rule<Enc>> {
         ),
         Rule::new(OpP::Const, BitVector, Ty::Bits, Box::new(rw_bv_const)),
         Rule::new(OpP::BvBit, BitVector, Ty::Bits, Box::new(rw_bv_bit)),
+        // TODO: heterogeneous input encodings
+        //Rule::new(OpP::Ite, BitVector, Ty::Uint, Box::new(rw_bv_ite)),
     ]
 }
 
