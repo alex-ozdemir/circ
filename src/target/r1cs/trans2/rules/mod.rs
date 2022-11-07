@@ -250,10 +250,7 @@ fn or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
                 } else {
                     i
                 };
-                let new = bool_neg(is_zero(
-                    ctx,
-                    term(PF_ADD, args.drain(i - take..).collect()),
-                ));
+                let new = bool_neg(is_zero(ctx, term(PF_ADD, args.drain(i - take..).collect())));
 
                 args.push(new);
             }
@@ -318,9 +315,12 @@ fn implies(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     ))
 }
 
-fn ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    let diff = term![PF_ADD; args[1].bit(), term![PF_NEG; args[2].bit()]];
-    Enc::Bit(term![PF_ADD; term![PF_MUL; args[0].bit(), diff], args[2].bit()])
+fn ite(c: Term, t: Term, f: Term) -> Term {
+    term![PF_ADD; term![PF_MUL; c, term![PF_ADD; t, term![PF_NEG; f.clone()]]], f]
+}
+
+fn bool_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(ite(args[0].bit(), args[1].bit(), args[2].bit()))
 }
 
 fn bool_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
@@ -376,15 +376,19 @@ fn bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
 
 #[allow(dead_code)]
 fn bv_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    let diff = term![PF_ADD; args[1].uint().0, term![PF_NEG; args[2].uint().0]];
-    Enc::Uint(
-        term![PF_ADD; term![PF_MUL; args[0].bit(), diff], args[2].uint().0],
-        args[1].uint().1,
-    )
+    Enc::Uint(ite(args[0].bit(), args[1].uint().0, args[2].uint().0), args[1].uint().1)
 }
 
 fn bv_not(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(args[0].bits().iter().map(|b| bool_neg(b.clone())).collect())
+}
+
+fn bv_neg(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let (x, w) = args[0].uint();
+    let field = FieldT::from(check(&x).as_pf());
+    let zero = is_zero(ctx, x.clone());
+    let diff = term![PF_ADD; pf_lit(field.new_v(Integer::from(1) << w)), term![PF_NEG; x]];
+    Enc::Uint(ite(zero, pf_lit(field.new_v(0)), diff), w)
 }
 
 /// The boolean/bv -> field rewrite rules.
@@ -394,7 +398,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
     vec![
         Rule::new(OpP::Const, Bool, Ty::Bit, Box::new(bool_const)),
         Rule::new(OpP::Eq, Bool, Ty::Bit, Box::new(bool_eq)),
-        Rule::new(OpP::Ite, Bool, Ty::Bit, Box::new(ite)),
+        Rule::new(OpP::Ite, Bool, Ty::Bit, Box::new(bool_ite)),
         Rule::new(OpP::Not, Bool, Ty::Bit, Box::new(not)),
         Rule::new(OpP::BoolMaj, Bool, Ty::Bit, Box::new(maj)),
         Rule::new(OpP::Implies, Bool, Ty::Bit, Box::new(implies)),
@@ -404,12 +408,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
             Ty::Bit,
             Box::new(xor),
         ),
-        Rule::new(
-            OpP::BoolNaryOp(BoolNaryOp::Or),
-            Bool,
-            Ty::Bit,
-            Box::new(or),
-        ),
+        Rule::new(OpP::BoolNaryOp(BoolNaryOp::Or), Bool, Ty::Bit, Box::new(or)),
         Rule::new(
             OpP::BoolNaryOp(BoolNaryOp::And),
             Bool,
@@ -420,7 +419,18 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(OpP::BvBit, BitVector, Ty::Bits, Box::new(bv_bit)),
         // TODO: heterogeneous input encodings
         //Rule::new(OpP::Ite, BitVector, Ty::Uint, Box::new(bv_ite)),
-        Rule::new(OpP::BvUnOp(BvUnOp::Not), BitVector, Ty::Bits, Box::new(bv_not)),
+        Rule::new(
+            OpP::BvUnOp(BvUnOp::Not),
+            BitVector,
+            Ty::Bits,
+            Box::new(bv_not),
+        ),
+        Rule::new(
+            OpP::BvUnOp(BvUnOp::Neg),
+            BitVector,
+            Ty::Uint,
+            Box::new(bv_neg),
+        ),
     ]
 }
 
@@ -437,6 +447,7 @@ pub fn choose(t: &Term, _: &[&BTreeSet<Ty>]) -> Ty {
         Op::Const(Value::BitVector(_)) => Ty::Bits,
         Op::BvBit(_) => Ty::Bits,
         Op::BvUnOp(BvUnOp::Not) => Ty::Bits,
+        Op::BvUnOp(BvUnOp::Neg) => Ty::Uint,
         _ => panic!(),
     }
 }

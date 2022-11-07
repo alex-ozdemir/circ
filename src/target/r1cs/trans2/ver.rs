@@ -123,7 +123,7 @@ pub fn soundness_terms<E: VerifiableEncoding>(
                     .iter()
                     .zip(&args)
                     .map(|((name, sort), b)| {
-                        let e = E::d_variable(&mut ctx, name, sort);
+                        let e = E::variable(&mut ctx, name, sort, rule.encoding_ty());
                         assertions.push(e.is_valid(b.clone()));
                         e
                     })
@@ -173,7 +173,7 @@ pub fn completeness_terms<E: VerifiableEncoding>(
                 let mut ctx = RewriteCtx::new(field.clone());
                 let e_args: Vec<E> = var_parts
                     .iter()
-                    .map(|(name, sort)| E::d_variable(&mut ctx, name, sort))
+                    .map(|(name, sort)| E::variable(&mut ctx, name, sort, rule.encoding_ty()))
                     .collect();
 
                 // apply the lowering rule

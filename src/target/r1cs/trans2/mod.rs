@@ -150,4 +150,10 @@ mod test {
     fn bv_not() {
         const_test("((bit 0) (bvnot #b110))")
     }
+
+    #[test]
+    fn bv_neg() {
+        const_test("(not ((bit 0) (bvneg #b000)))");
+        const_test("(not ((bit 0) (bvneg #b010)))");
+    }
 }
