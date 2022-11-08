@@ -278,8 +278,11 @@ fn bool_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
 }
 
 fn xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    let mut args: Vec<Term> = args.iter().map(|a| a.bit()).collect();
-    Enc::Bit(loop {
+    Enc::Bit(xor_helper(ctx, args.iter().map(|a| a.bit()).collect()))
+}
+
+fn xor_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
+    loop {
         match args.len() {
             0 => break ctx.zero().clone(),
             1 => break args.pop().unwrap(),
@@ -302,7 +305,7 @@ fn xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
                 args.push(bits.into_iter().next().unwrap());
             }
         };
-    })
+    }
 }
 
 fn not(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
@@ -438,11 +441,48 @@ fn bool_to_bv(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(vec![args[0].bit()])
 }
 
+fn transpose_bits(args: &[&Enc]) -> Vec<Vec<Term>> {
+    let mut bits = vec![vec![]; args[0].bits().len()];
+    for a in args {
+        for (i, b) in a.bits().iter().enumerate() {
+            bits[i].push(b.clone());
+        }
+    }
+    bits
+}
+
+fn bv_and(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bits(
+        transpose_bits(args)
+            .into_iter()
+            .map(|bs| bool_neg(or_helper(ctx, bs.into_iter().map(bool_neg).collect())))
+            .collect(),
+    )
+}
+
+fn bv_or(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bits(
+        transpose_bits(args)
+            .into_iter()
+            .map(|bs| or_helper(ctx, bs))
+            .collect(),
+    )
+}
+
+fn bv_xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bits(
+        transpose_bits(args)
+            .into_iter()
+            .map(|bs| xor_helper(ctx, bs))
+            .collect(),
+    )
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
     use OpPattern as OpP;
-    use SortPattern::{BitVector, Bool};
+    use SortPattern::{BitVector as BV, Bool};
     use Ty::*;
     vec![
         Rule::new(0, OpP::Const, Bool, All(Bit), bool_const),
@@ -454,16 +494,19 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Xor), Bool, All(Bit), xor),
         Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Or), Bool, All(Bit), or),
         Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::And), Bool, All(Bit), and),
-        Rule::new(0, OpP::Const, BitVector, All(Bit), bv_const),
-        Rule::new(0, OpP::BvBit, BitVector, All(Bits), bv_bit),
-        Rule::new(0, OpP::Ite, BitVector, Seq(vec![Bit, Uint, Uint]), bv_ite),
-        Rule::new(0, OpP::BvUnOp(BvUnOp::Not), BitVector, All(Bits), bv_not),
-        Rule::new(0, OpP::BvUnOp(BvUnOp::Neg), BitVector, All(Uint), bv_neg),
-        Rule::new(0, OpP::Eq, BitVector, All(Uint), bv_eq),
-        Rule::new(0, OpP::BvUext, BitVector, All(Bits), bv_uext_bits),
-        Rule::new(1, OpP::BvUext, BitVector, All(Uint), bv_uext_uint),
-        Rule::new(0, OpP::BvSext, BitVector, All(Bits), bv_sext),
-        Rule::new(0, OpP::BoolToBv, BitVector, All(Bit), bool_to_bv),
+        Rule::new(0, OpP::Const, BV, All(Bit), bv_const),
+        Rule::new(0, OpP::BvBit, BV, All(Bits), bv_bit),
+        Rule::new(0, OpP::Ite, BV, Seq(vec![Bit, Uint, Uint]), bv_ite),
+        Rule::new(0, OpP::BvUnOp(BvUnOp::Not), BV, All(Bits), bv_not),
+        Rule::new(0, OpP::BvUnOp(BvUnOp::Neg), BV, All(Uint), bv_neg),
+        Rule::new(0, OpP::Eq, BV, All(Uint), bv_eq),
+        Rule::new(0, OpP::BvUext, BV, All(Bits), bv_uext_bits),
+        Rule::new(1, OpP::BvUext, BV, All(Uint), bv_uext_uint),
+        Rule::new(0, OpP::BvSext, BV, All(Bits), bv_sext),
+        Rule::new(0, OpP::BoolToBv, BV, All(Bit), bool_to_bv),
+        Rule::new(0, OpP::BvNaryOp(BvNaryOp::And), BV, All(Bits), bv_and),
+        Rule::new(0, OpP::BvNaryOp(BvNaryOp::Or), BV, All(Bits), bv_or),
+        Rule::new(0, OpP::BvNaryOp(BvNaryOp::Xor), BV, All(Bits), bv_xor),
     ]
 }
 

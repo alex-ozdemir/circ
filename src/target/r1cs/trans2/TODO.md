@@ -1,8 +1,5 @@
 To do:
 * bv: pf2bv
-* bv: and
-* bv: or
-* bv: xor
 * bv: mul
 * bv: add
 * bv: sub
@@ -18,6 +15,9 @@ To do:
 * better Pf2Bv in SMT BE
 
 Done:
+* bv: and
+* bv: or
+* bv: xor
 * clean visibilities
 * heterogeneous input encodings (BV ITE)
 * fix variable soundness VC (universal quantifiers)
