@@ -70,7 +70,6 @@ impl Enc {
         }
     }
     #[track_caller]
-    #[allow(dead_code)]
     pub(super) fn uint(&self) -> (Term, usize) {
         match self {
             Enc::Uint(b, u) => (b.clone(), *u),
@@ -90,7 +89,6 @@ impl Encoding for Enc {
     }
 
     fn as_bool_term(&self) -> Term {
-        #[allow(irrefutable_let_patterns)]
         if let Enc::Bit(b) = self {
             term![EQ; b.clone(), pf_lit(FieldT::from(check(b).as_pf()).new_v(1))]
         } else {
