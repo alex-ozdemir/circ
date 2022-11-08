@@ -165,6 +165,10 @@ impl Expr2Smt<()> for TermData {
                 write!(w, "((_ zero_extend {})", s)?;
                 true
             }
+            Op::BvSext(s) => {
+                write!(w, "((_ sign_extend {})", s)?;
+                true
+            }
             Op::BvBit(i) => {
                 write!(
                     w,

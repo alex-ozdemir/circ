@@ -423,6 +423,17 @@ fn bv_uext_uint(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
+fn bv_sext(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+    match op {
+        Op::BvSext(n) => Enc::Bits({
+            let mut bits = args[0].bits().into_iter().rev();
+            let ext_bits = std::iter::repeat(bits.next().expect("sign ext empty")).take(n + 1);
+            bits.rev().chain(ext_bits).cloned().collect()
+        }),
+        _ => panic!(),
+    }
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -447,6 +458,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::Eq, BitVector, All(Uint), bv_eq),
         Rule::new(0, OpP::BvUext, BitVector, All(Bits), bv_uext_bits),
         Rule::new(1, OpP::BvUext, BitVector, All(Uint), bv_uext_uint),
+        Rule::new(0, OpP::BvSext, BitVector, All(Bits), bv_sext),
     ]
 }
 
