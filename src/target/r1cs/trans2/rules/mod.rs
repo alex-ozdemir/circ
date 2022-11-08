@@ -1,6 +1,6 @@
 //! Rules for lowering booleans and bit-vectors to a field
 
-use super::lang::{Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
+use super::lang::{EncTypes, Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
 
 use circ_fields::FieldT;
@@ -376,7 +376,10 @@ fn bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
 
 #[allow(dead_code)]
 fn bv_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Uint(ite(args[0].bit(), args[1].uint().0, args[2].uint().0), args[1].uint().1)
+    Enc::Uint(
+        ite(args[0].bit(), args[1].uint().0, args[2].uint().0),
+        args[1].uint().1,
+    )
 }
 
 fn bv_not(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
@@ -393,61 +396,38 @@ fn bv_neg(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
 
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
+    use EncTypes::*;
     use OpPattern as OpP;
     use SortPattern::{BitVector, Bool};
+    use Ty::*;
     vec![
-        Rule::new(OpP::Const, Bool, Ty::Bit, Box::new(bool_const)),
-        Rule::new(OpP::Eq, Bool, Ty::Bit, Box::new(bool_eq)),
-        Rule::new(OpP::Ite, Bool, Ty::Bit, Box::new(bool_ite)),
-        Rule::new(OpP::Not, Bool, Ty::Bit, Box::new(not)),
-        Rule::new(OpP::BoolMaj, Bool, Ty::Bit, Box::new(maj)),
-        Rule::new(OpP::Implies, Bool, Ty::Bit, Box::new(implies)),
-        Rule::new(
-            OpP::BoolNaryOp(BoolNaryOp::Xor),
-            Bool,
-            Ty::Bit,
-            Box::new(xor),
-        ),
-        Rule::new(OpP::BoolNaryOp(BoolNaryOp::Or), Bool, Ty::Bit, Box::new(or)),
-        Rule::new(
-            OpP::BoolNaryOp(BoolNaryOp::And),
-            Bool,
-            Ty::Bit,
-            Box::new(and),
-        ),
-        Rule::new(OpP::Const, BitVector, Ty::Bits, Box::new(bv_const)),
-        Rule::new(OpP::BvBit, BitVector, Ty::Bits, Box::new(bv_bit)),
-        // TODO: heterogeneous input encodings
-        //Rule::new(OpP::Ite, BitVector, Ty::Uint, Box::new(bv_ite)),
-        Rule::new(
-            OpP::BvUnOp(BvUnOp::Not),
-            BitVector,
-            Ty::Bits,
-            Box::new(bv_not),
-        ),
-        Rule::new(
-            OpP::BvUnOp(BvUnOp::Neg),
-            BitVector,
-            Ty::Uint,
-            Box::new(bv_neg),
-        ),
+        Rule::new(0, OpP::Const, Bool, All(Bit), bool_const),
+        Rule::new(0, OpP::Eq, Bool, All(Bit), bool_eq),
+        Rule::new(0, OpP::Ite, Bool, All(Bit), bool_ite),
+        Rule::new(0, OpP::Not, Bool, All(Bit), not),
+        Rule::new(0, OpP::BoolMaj, Bool, All(Bit), maj),
+        Rule::new(0, OpP::Implies, Bool, All(Bit), implies),
+        Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Xor), Bool, All(Bit), xor),
+        Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Or), Bool, All(Bit), or),
+        Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::And), Bool, All(Bit), and),
+        Rule::new(0, OpP::Const, BitVector, All(Bit), bv_const),
+        Rule::new(0, OpP::BvBit, BitVector, All(Bits), bv_bit),
+        Rule::new(0, OpP::Ite, BitVector, Seq(vec![Bit, Uint, Uint]), bv_ite),
+        Rule::new(0, OpP::BvUnOp(BvUnOp::Not), BitVector, All(Bits), bv_not),
+        Rule::new(0, OpP::BvUnOp(BvUnOp::Neg), BitVector, All(Uint), bv_neg),
     ]
 }
 
 /// Our encoding choice function
-pub fn choose(t: &Term, _: &[&BTreeSet<Ty>]) -> Ty {
+pub fn choose(t: &Term, encs: &[&BTreeSet<Ty>]) -> usize {
     match &t.op {
-        Op::BoolMaj | Op::BoolNaryOp(_) | Op::Not | Op::Implies => Ty::Bit,
-        Op::Eq => match check(&t.cs[0]) {
-            Sort::Bool => Ty::Bit,
-            Sort::BitVector(_) => Ty::Uint,
-            _ => unimplemented!(),
-        },
-        Op::Const(Value::Bool(_)) => Ty::Bit,
-        Op::Const(Value::BitVector(_)) => Ty::Bits,
-        Op::BvBit(_) => Ty::Bits,
-        Op::BvUnOp(BvUnOp::Not) => Ty::Bits,
-        Op::BvUnOp(BvUnOp::Neg) => Ty::Uint,
-        _ => panic!(),
+        Op::BvUext(_) => {
+            if encs[0].contains(&Ty::Bits) {
+                1
+            } else {
+                0
+            }
+        }
+        o => panic!("Cannot choose for op {}", o),
     }
 }

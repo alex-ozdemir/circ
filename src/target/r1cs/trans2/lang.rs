@@ -43,12 +43,25 @@ pub trait Encoding: Clone + Debug {
     fn variable(c: &mut RewriteCtx, name: &str, sort: &Sort, ty: Self::Type) -> Self;
     /// The above, but with the default encoding type.
     fn d_variable(c: &mut RewriteCtx, name: &str, sort: &Sort) -> Self {
-        Self::variable(c, name, sort, <Self::Type as EncodingType>::default_for_sort(sort))
+        Self::variable(
+            c,
+            name,
+            sort,
+            <Self::Type as EncodingType>::default_for_sort(sort),
+        )
     }
 }
 
-/// Chooses an encoding for a term given the available encodings for the arguments.
-pub(super) type Chooser<T> = Box<dyn Fn(&Term, &[&BTreeSet<T>]) -> T>;
+/// How inputs should be encoded for a [Rule].
+pub enum EncTypes<T: EncodingType> {
+    /// All encoded the same way.
+    All(T),
+    /// Encoded these ways.
+    Seq(Vec<T>),
+}
+
+/// Chooses a rule for a term given the available encodings for the arguments.
+pub(super) type Chooser<T> = Box<dyn Fn(&Term, &[&BTreeSet<T>]) -> usize>;
 
 #[derive(Debug)]
 /// The context in which a rewrite is performed
@@ -107,22 +120,27 @@ impl RewriteCtx {
 
 /// A rewrite rule for lowering IR to a finite-field assertion circuit.
 pub struct Rule<E: Encoding> {
+    /// Used to disabiguate rules that match the same term. Selectd by [Chooser] based on which
+    /// input encodings are available.
+    pub id: usize,
     pattern: Pattern,
-    encoding_type: E::Type,
+    encoding_types: EncTypes<E::Type>,
     fn_: Box<dyn Fn(&mut RewriteCtx, &Op, &[&E]) -> E>,
 }
 
 impl<E: Encoding> Rule<E> {
     /// Create a new rule.
     pub(super) fn new<F: Fn(&mut RewriteCtx, &Op, &[&E]) -> E + 'static>(
+        id: usize,
         op_pattern: OpPattern,
         sort: SortPattern,
-        encoding_type: E::Type,
+        encoding_types: EncTypes<E::Type>,
         f: F,
     ) -> Self {
         Self {
+            id,
             pattern: Pattern(op_pattern, sort),
-            encoding_type,
+            encoding_types,
             fn_: Box::new(f),
         }
     }
@@ -132,16 +150,22 @@ impl<E: Encoding> Rule<E> {
         &self.pattern
     }
 
-    /// The encoding for this rule
-    pub fn encoding_ty(&self) -> E::Type {
-        self.encoding_type
+    /// The encoding for this rule's ith argument
+    pub fn encoding_ty(&self, i: usize) -> E::Type {
+        match &self.encoding_types {
+            EncTypes::All(t) => *t,
+            EncTypes::Seq(s) => {
+                assert!(i < s.len());
+                s[i]
+            }
+        }
     }
 
     /// Apply the rule
     pub(super) fn apply(&self, c: &mut RewriteCtx, t: &Op, args: &[&E]) -> E {
         debug_assert_eq!(&OpPattern::from(t), &self.pattern.0);
-        for a in args {
-            debug_assert_eq!(a.type_(), self.encoding_ty());
+        for (i, a) in args.iter().enumerate() {
+            debug_assert_eq!(a.type_(), self.encoding_ty(i));
         }
         (self.fn_)(c, t, args)
     }
@@ -253,6 +277,9 @@ impl<'a> From<&'a Term> for Pattern {
             Op::BvBit(_) => &t.cs[0],
             _ => t,
         };
-        Pattern(OpPattern::from(&t.op), SortPattern::from(&check(term_of_type_param)))
+        Pattern(
+            OpPattern::from(&t.op),
+            SortPattern::from(&check(term_of_type_param)),
+        )
     }
 }

@@ -6,7 +6,7 @@ use fxhash::FxHashMap as HashMap;
 use std::collections::BTreeSet;
 
 struct Rewriter<E: Encoding> {
-    rules: HashMap<(Pattern, E::Type), Rule<E>>,
+    rules: HashMap<Pattern, Vec<Rule<E>>>,
     chooser: Chooser<E::Type>,
     encs: HashMap<(Term, E::Type), E>,
     types: TermMap<BTreeSet<E::Type>>,
@@ -14,12 +14,13 @@ struct Rewriter<E: Encoding> {
 
 impl<E: Encoding> Rewriter<E> {
     fn new(rws: Vec<Rule<E>>, chooser: Chooser<E::Type>) -> Self {
-        let mut rules_table: HashMap<(Pattern, E::Type), Rule<E>> = HashMap::default();
+        let mut rules_table: HashMap<Pattern, Vec<Rule<E>>> = HashMap::default();
         for r in rws {
-            let prev = rules_table.insert((r.pattern().clone(), r.encoding_ty()), r);
-            if let Some(p) = prev {
-                panic!("Two rules for {:?}", p.pattern())
+            let existing = rules_table.entry(*r.pattern()).or_insert_with(Vec::new);
+            if existing.iter().find(|e_r| e_r.id == r.id).is_some() {
+                panic!("Two rules for {:?}. Use different IDs.", r.pattern())
             }
+            existing.push(r);
         }
         Self {
             rules: rules_table,
@@ -55,18 +56,32 @@ impl<E: Encoding> Rewriter<E> {
             E::d_variable(c, name, sort)
         } else {
             let p = Pattern::from(&t);
-            let available: Vec<&BTreeSet<E::Type>> =
-                t.cs.iter().map(|c| self.get_types(c)).collect();
-            let ty = (self.chooser)(&t, &available);
-            for child in &t.cs {
-                self.ensure_enc(c, child, ty);
+            let rules_table = std::mem::take(&mut self.rules);
+            let rules = rules_table
+                .get(&p)
+                .unwrap_or_else(|| panic!("No rule for pattern {:?}", p));
+            let r = if rules.len() == 1 {
+                &rules[0]
+            } else {
+                let available: Vec<&BTreeSet<E::Type>> =
+                    t.cs.iter().map(|c| self.get_types(c)).collect();
+                let id = (self.chooser)(&t, &available);
+                rules
+                    .iter()
+                    .find(|r| r.id == id)
+                    .unwrap_or_else(|| panic!("No rule for pattern {:?} has chosen id {}", p, id))
+            };
+            for (i, child) in t.cs.iter().enumerate() {
+                self.ensure_enc(c, child, r.encoding_ty(i));
             }
-            let args: Vec<&E> = t.cs.iter().map(|ch| self.get_enc(ch, ty)).collect();
-            let r = self
-                .rules
-                .get(&(p, ty))
-                .unwrap_or_else(|| panic!("No pattern for pattern {:?} and encoding {:?}", p, ty));
-            r.apply(c, &t.op, &args)
+            let args: Vec<&E> =
+                t.cs.iter()
+                    .enumerate()
+                    .map(|(i, ch)| self.get_enc(ch, r.encoding_ty(i)))
+                    .collect();
+            let res = r.apply(c, &t.op, &args);
+            self.rules = rules_table;
+            res
         };
         self.add(t, new);
     }

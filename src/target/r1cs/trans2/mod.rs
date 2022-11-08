@@ -152,6 +152,11 @@ mod test {
     }
 
     #[test]
+    fn bv_ite() {
+        const_test("((bit 0) (ite true #b111 #b010))")
+    }
+
+    #[test]
     fn bv_neg() {
         const_test("(not ((bit 0) (bvneg #b000)))");
         const_test("(not ((bit 0) (bvneg #b010)))");
