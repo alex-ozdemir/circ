@@ -49,8 +49,8 @@ fn ops(o: &OpPattern, s: &Sort) -> Vec<Op> {
         OpPattern::BoolToBv => vec![Op::BoolToBv],
         OpPattern::BvExtract => todo!(),
         OpPattern::BvConcat => todo!(),
-        OpPattern::BvUext => todo!(),
-        OpPattern::BvSext => todo!(),
+        OpPattern::BvUext => (0..s.as_bv()).map(|i| Op::BvUext(i)).collect(),
+        OpPattern::BvSext => (0..s.as_bv()).map(|i| Op::BvSext(i)).collect(),
         OpPattern::PfToBv => todo!(),
     }
 }
@@ -61,6 +61,7 @@ fn arg_sorts(o: &Op, s: &Sort, bnd: &Bound) -> Vec<Vec<Sort>> {
     match o {
         Op::Eq => vec![vec![s.clone(), s.clone()]],
         Op::Ite => vec![vec![Sort::Bool, s.clone(), s.clone()]],
+        Op::BvUext(i) | Op::BvSext(i) => vec![vec![Sort::BitVector(s.as_bv() - i)]],
         _ => {
             if let Some(n_args) = o.arity() {
                 vec![repeat(s).take(n_args).cloned().collect()]

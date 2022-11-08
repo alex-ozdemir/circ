@@ -394,7 +394,33 @@ fn bv_neg(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
 }
 
 fn bv_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(is_zero(ctx, term![PF_ADD; args[0].uint().0, term![PF_NEG; args[1].uint().0]]))
+    Enc::Bit(is_zero(
+        ctx,
+        term![PF_ADD; args[0].uint().0, term![PF_NEG; args[1].uint().0]],
+    ))
+}
+
+fn bv_uext_bits(ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+    match op {
+        Op::BvUext(n) => Enc::Bits(
+            args[0]
+                .bits()
+                .into_iter()
+                .cloned()
+                .chain(std::iter::repeat(ctx.zero().clone()).take(*n))
+                .collect(),
+        ),
+        _ => panic!(),
+    }
+}
+
+fn bv_uext_uint(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+    if let Op::BvUext(n) = op {
+        let (x, w) = args[0].uint();
+        Enc::Uint(x, w + *n)
+    } else {
+        panic!()
+    }
 }
 
 /// The boolean/bv -> field rewrite rules.
@@ -419,6 +445,8 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvUnOp(BvUnOp::Not), BitVector, All(Bits), bv_not),
         Rule::new(0, OpP::BvUnOp(BvUnOp::Neg), BitVector, All(Uint), bv_neg),
         Rule::new(0, OpP::Eq, BitVector, All(Uint), bv_eq),
+        Rule::new(0, OpP::BvUext, BitVector, All(Bits), bv_uext_bits),
+        Rule::new(1, OpP::BvUext, BitVector, All(Uint), bv_uext_uint),
     ]
 }
 
