@@ -169,6 +169,14 @@ impl Expr2Smt<()> for TermData {
                 write!(w, "((_ sign_extend {})", s)?;
                 true
             }
+            Op::BoolToBv => {
+                write!(
+                    w,
+                    "(ite {a} #b1 #b0)",
+                    a = SmtDisp(&*self.cs[0]),
+                )?;
+                false
+            }
             Op::BvBit(i) => {
                 write!(
                     w,

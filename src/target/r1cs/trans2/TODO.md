@@ -1,11 +1,25 @@
 To do:
-* bv lowering
-* heterogeneous input encodings (BV ITE)
+* bv: pf2bv
+* bv: and
+* bv: or
+* bv: xor
+* bv: mul
+* bv: add
+* bv: sub
+* bv: urem
+* bv: udiv
+* bv: shl
+* bv: ashr
+* bv: lshr
+* bv: concat
+* bv: extract
+* secret/public variables
 * field flatten
-* clean visibilities
 * better Pf2Bv in SMT BE
 
 Done:
+* clean visibilities
+* heterogeneous input encodings (BV ITE)
 * fix variable soundness VC (universal quantifiers)
 * FE filters for rule types
 * conversion completeness VC

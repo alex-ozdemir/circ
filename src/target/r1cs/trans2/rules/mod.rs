@@ -434,6 +434,10 @@ fn bv_sext(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
+fn bool_to_bv(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bits(vec![args[0].bit()])
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -459,6 +463,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvUext, BitVector, All(Bits), bv_uext_bits),
         Rule::new(1, OpP::BvUext, BitVector, All(Uint), bv_uext_uint),
         Rule::new(0, OpP::BvSext, BitVector, All(Bits), bv_sext),
+        Rule::new(0, OpP::BoolToBv, BitVector, All(Bit), bool_to_bv),
     ]
 }
 
