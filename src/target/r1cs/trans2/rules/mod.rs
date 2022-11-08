@@ -374,7 +374,6 @@ fn bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
-#[allow(dead_code)]
 fn bv_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Uint(
         ite(args[0].bit(), args[1].uint().0, args[2].uint().0),
