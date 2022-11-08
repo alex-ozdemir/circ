@@ -393,6 +393,10 @@ fn bv_neg(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Uint(ite(zero, pf_lit(field.new_v(0)), diff), w)
 }
 
+fn bv_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(is_zero(ctx, term![PF_ADD; args[0].uint().0, term![PF_NEG; args[1].uint().0]]))
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -414,6 +418,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::Ite, BitVector, Seq(vec![Bit, Uint, Uint]), bv_ite),
         Rule::new(0, OpP::BvUnOp(BvUnOp::Not), BitVector, All(Bits), bv_not),
         Rule::new(0, OpP::BvUnOp(BvUnOp::Neg), BitVector, All(Uint), bv_neg),
+        Rule::new(0, OpP::Eq, BitVector, All(Uint), bv_eq),
     ]
 }
 
