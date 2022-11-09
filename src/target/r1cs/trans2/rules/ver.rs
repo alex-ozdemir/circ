@@ -48,6 +48,7 @@ impl VerifiableEncoding for Enc {
                 );
                 term![EQ; f.clone(), sum2]
             }
+            Enc::Field(f) => term![EQ; f.clone(), t],
         }
     }
 }

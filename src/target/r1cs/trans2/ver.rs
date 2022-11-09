@@ -19,6 +19,8 @@ pub struct Bound {
     pub args: usize,
     /// The maximum size of bitvectors
     pub bv_bits: usize,
+    /// The field
+    pub field: FieldT,
 }
 
 /// Get all sorts for a [SortPattern]
@@ -26,6 +28,7 @@ fn sorts(s: &SortPattern, bnd: &Bound) -> Vec<Sort> {
     match s {
         SortPattern::BitVector => (1..=bnd.bv_bits).map(Sort::BitVector).collect(),
         SortPattern::Bool => vec![Sort::Bool],
+        SortPattern::Field => vec![Sort::Field(bnd.field.clone())],
     }
 }
 
@@ -51,7 +54,7 @@ fn ops(o: &OpPattern, s: &Sort) -> Vec<Op> {
         OpPattern::BvConcat => todo!(),
         OpPattern::BvUext => (0..s.as_bv()).map(|i| Op::BvUext(i)).collect(),
         OpPattern::BvSext => (0..s.as_bv()).map(|i| Op::BvSext(i)).collect(),
-        OpPattern::PfToBv => todo!(),
+        OpPattern::PfToBv => vec![Op::PfToBv(s.as_bv())],
     }
 }
 
@@ -63,6 +66,7 @@ fn arg_sorts(o: &Op, s: &Sort, bnd: &Bound) -> Vec<Vec<Sort>> {
         Op::Ite => vec![vec![Sort::Bool, s.clone(), s.clone()]],
         Op::BvUext(i) | Op::BvSext(i) => vec![vec![Sort::BitVector(s.as_bv() - i)]],
         Op::BoolToBv => vec![vec![Sort::Bool]],
+        Op::PfToBv(_) => vec![vec![Sort::Field(bnd.field.clone())]],
         _ => {
             if let Some(n_args) = o.arity() {
                 vec![repeat(s).take(n_args).cloned().collect()]
@@ -104,7 +108,6 @@ fn gen_names(sorts: Vec<Sort>) -> Vec<(String, Sort)> {
 pub fn soundness_terms<E: VerifiableEncoding>(
     rule: &Rule<E>,
     bnd: &Bound,
-    field: &FieldT,
 ) -> Vec<(Term, Sort, Term)> {
     let mut out = Vec::new();
     for sort in sorts(&rule.pattern().1, bnd) {
@@ -120,7 +123,7 @@ pub fn soundness_terms<E: VerifiableEncoding>(
                     .collect();
 
                 // validly encode them
-                let mut ctx = RewriteCtx::new(field.clone());
+                let mut ctx = RewriteCtx::new(bnd.field.clone());
                 let e_args: Vec<E> = var_parts
                     .iter()
                     .zip(&args)
@@ -157,7 +160,6 @@ pub fn soundness_terms<E: VerifiableEncoding>(
 pub fn completeness_terms<E: VerifiableEncoding>(
     rule: &Rule<E>,
     bnd: &Bound,
-    field: &FieldT,
 ) -> Vec<(Term, Sort, Term)> {
     let mut out = Vec::new();
     for sort in sorts(&rule.pattern().1, bnd) {
@@ -173,7 +175,7 @@ pub fn completeness_terms<E: VerifiableEncoding>(
                     .collect();
 
                 // encode them
-                let mut ctx = RewriteCtx::new(field.clone());
+                let mut ctx = RewriteCtx::new(bnd.field.clone());
                 let e_args: Vec<E> = var_parts
                     .iter()
                     .enumerate()
@@ -206,7 +208,7 @@ pub fn completeness_terms<E: VerifiableEncoding>(
 ///
 /// * `sort` is the sort that the term's operator may be parameterized on
 /// * `soundness` is a boolean term that is SAT iff the rule is unsound.
-pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound, field: &FieldT) -> Vec<(Sort, Term)> {
+pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound) -> Vec<(Sort, Term)> {
     let mut out = Vec::new();
     let sort_patterns: BTreeSet<SortPattern> = <E::Type as EncodingType>::all()
         .into_iter()
@@ -214,7 +216,7 @@ pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound, field: &FieldT) -> 
         .collect();
     for sort_pattern in sort_patterns {
         for sort in sorts(&sort_pattern, bnd) {
-            let mut ctx = RewriteCtx::new(field.clone());
+            let mut ctx = RewriteCtx::new(bnd.field.clone());
             let name = "a".to_owned();
             let e = E::d_variable(&mut ctx, &name, &sort);
             let var = leaf_term(Op::Var(name.clone(), sort.clone()));
@@ -238,7 +240,6 @@ pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound, field: &FieldT) -> 
 /// * `term` is a boolean term that is SAT iff the rule is incomplete.
 pub fn v_completeness_terms<E: VerifiableEncoding>(
     bnd: &Bound,
-    field: &FieldT,
 ) -> Vec<(Sort, Term)> {
     let mut out = Vec::new();
     let sort_patterns: BTreeSet<SortPattern> = <E::Type as EncodingType>::all()
@@ -247,7 +248,7 @@ pub fn v_completeness_terms<E: VerifiableEncoding>(
         .collect();
     for sort_pattern in sort_patterns {
         for sort in sorts(&sort_pattern, bnd) {
-            let mut ctx = RewriteCtx::new(field.clone());
+            let mut ctx = RewriteCtx::new(bnd.field.clone());
             let name = "a".to_owned();
             let _e = E::d_variable(&mut ctx, &name, &sort);
             let mut assertions = Vec::new();
@@ -275,14 +276,13 @@ pub fn v_completeness_terms<E: VerifiableEncoding>(
 /// * `soundness` is a boolean term that is SAT iff the rule is unsound.
 pub fn c_soundness_terms<E: VerifiableEncoding>(
     bnd: &Bound,
-    field: &FieldT,
 ) -> Vec<(E::Type, E::Type, Sort, Term)> {
     let mut out = Vec::new();
     for from in <E::Type as EncodingType>::all() {
         for to in <E::Type as EncodingType>::all() {
             if from != to && from.sort() == to.sort() {
                 for sort in sorts(&from.sort(), bnd) {
-                    let mut ctx = RewriteCtx::new(field.clone());
+                    let mut ctx = RewriteCtx::new(bnd.field.clone());
                     let name = "a".to_owned();
                     let e = E::variable(&mut ctx, &name, &sort, from);
                     let var = leaf_term(Op::Var(name, sort.clone()));
@@ -312,14 +312,13 @@ pub fn c_soundness_terms<E: VerifiableEncoding>(
 /// * `soundness` is a boolean term that is SAT iff the rule is unsound.
 pub fn c_completeness_terms<E: VerifiableEncoding>(
     bnd: &Bound,
-    field: &FieldT,
 ) -> Vec<(E::Type, E::Type, Sort, Term)> {
     let mut out = Vec::new();
     for from in <E::Type as EncodingType>::all() {
         for to in <E::Type as EncodingType>::all() {
             if from != to && from.sort() == to.sort() {
                 for sort in sorts(&from.sort(), bnd) {
-                    let mut ctx = RewriteCtx::new(field.clone());
+                    let mut ctx = RewriteCtx::new(bnd.field.clone());
                     let name = "a".to_owned();
                     let e = E::variable(&mut ctx, &name, &sort, from);
                     let _e2 = e.convert(&mut ctx, to);

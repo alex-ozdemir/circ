@@ -19,6 +19,8 @@ pub enum Enc {
     Bits(Vec<Term>),
     /// A bit-vector as a small field element.
     Uint(Term, usize),
+    /// A prime field element.
+    Field(Term),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -30,6 +32,8 @@ pub enum Ty {
     Bits,
     /// See [Enc::Uint]
     Uint,
+    /// See [Enc::Field]
+    Field,
 }
 
 impl EncodingType for Ty {
@@ -38,11 +42,12 @@ impl EncodingType for Ty {
             Ty::Bit => SortPattern::Bool,
             Ty::Bits => SortPattern::BitVector,
             Ty::Uint => SortPattern::BitVector,
+            Ty::Field => SortPattern::Field,
         }
     }
 
     fn all() -> Vec<Self> {
-        vec![Self::Bit, Self::Bits, Self::Uint]
+        vec![Self::Bit, Self::Bits, Self::Uint, Self::Field]
     }
 
     fn default_for_sort(s: &Sort) -> Self {
@@ -76,6 +81,13 @@ impl Enc {
             _ => panic!("Tried to unwrap {:?} as bv uint", self),
         }
     }
+    #[track_caller]
+    pub(super) fn field(&self) -> Term {
+        match self {
+            Enc::Field(f) => f.clone(),
+            _ => panic!("Tried to unwrap {:?} as field value", self),
+        }
+    }
 }
 
 impl Encoding for Enc {
@@ -85,6 +97,7 @@ impl Encoding for Enc {
             Enc::Bit(_) => Ty::Bit,
             Enc::Bits(_) => Ty::Bits,
             Enc::Uint(_, _) => Ty::Uint,
+            Enc::Field(_) => Ty::Field,
         }
     }
 
@@ -132,6 +145,7 @@ impl Encoding for Enc {
                         term![PF_MUL; pf_lit(ctx.field().new_v(Integer::from(1) << i)), f.clone()]).collect());
                 Enc::Uint(sum, w)
             }
+            Ty::Field => Enc::Field(ctx.fresh(name, t)),
         }
     }
 
@@ -172,6 +186,7 @@ impl Encoding for Enc {
             (Self::Bits(_), Ty::Bits) => self.clone(),
             (Self::Uint(_, _), Ty::Uint) => self.clone(),
             (Self::Bit(_), Ty::Bit) => self.clone(),
+            (Self::Field(_), Ty::Field) => self.clone(),
             _ => unimplemented!("invalid conversion"),
         }
     }
@@ -476,6 +491,13 @@ fn bv_xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     )
 }
 
+fn pf_to_bv(ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+    match op {
+        Op::PfToBv(w) => Enc::Bits(bit_split(ctx, "pf_to_field", args[0].field(), *w)),
+        _ => unreachable!(),
+    }
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -505,6 +527,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::And), BV, All(Bits), bv_and),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Or), BV, All(Bits), bv_or),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Xor), BV, All(Bits), bv_xor),
+        Rule::new(0, OpP::PfToBv, BV, All(Field), pf_to_bv),
     ]
 }
 

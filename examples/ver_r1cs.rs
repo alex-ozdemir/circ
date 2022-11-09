@@ -90,6 +90,7 @@ fn sort_pat_string(s: &SortPattern) -> String {
     match s {
         SortPattern::Bool => format!("bool"),
         SortPattern::BitVector => format!("bitvector"),
+        SortPattern::Field => format!("field"),
     }
 }
 
@@ -112,11 +113,12 @@ fn main() -> Result<(), String> {
     let bnd = Bound {
         args: opts.max_args,
         bv_bits: 4,
+        field: DFL_T.clone(),
     };
 
     if rule_types.contains(&RuleType::Conv) {
         if props.contains(&Prop::Sound) {
-            for (from, to, s, t) in c_soundness_terms::<Enc>(&bnd, &DFL_T) {
+            for (from, to, s, t) in c_soundness_terms::<Enc>(&bnd) {
                 println!("check: sound conversion {:?} -> {:?} : {}", from, to, s);
                 if let Some(model) = find_model(&t) {
                     println!("ERROR: unsound");
@@ -133,7 +135,7 @@ fn main() -> Result<(), String> {
             }
         }
         if props.contains(&Prop::Complete) {
-            for (from, to, s, t) in c_completeness_terms::<Enc>(&bnd, &DFL_T) {
+            for (from, to, s, t) in c_completeness_terms::<Enc>(&bnd) {
                 println!("check: complete conversion {:?} -> {:?} : {}", from, to, s);
                 if let Some(model) = find_model(&t) {
                     println!("ERROR: unsound");
@@ -153,7 +155,7 @@ fn main() -> Result<(), String> {
 
     if rule_types.contains(&RuleType::Var) {
         if props.contains(&Prop::Complete) {
-            for (s, t) in v_completeness_terms::<Enc>(&bnd, &DFL_T) {
+            for (s, t) in v_completeness_terms::<Enc>(&bnd) {
                 println!("check: variable {}", s);
                 if let Some(model) = find_model(&t) {
                     println!("ERROR");
@@ -170,7 +172,7 @@ fn main() -> Result<(), String> {
             }
         }
         if props.contains(&Prop::Sound) {
-            for (s, t) in v_soundness_terms::<Enc>(&bnd, &DFL_T) {
+            for (s, t) in v_soundness_terms::<Enc>(&bnd) {
                 println!("check: variable {}", s);
                 if let Some(model) = find_model(&t) {
                     println!("ERROR");
@@ -200,7 +202,7 @@ fn main() -> Result<(), String> {
                         Prop::Sound => soundness_terms,
                         Prop::Complete => completeness_terms,
                     };
-                    for (t, s, soundness) in f(&r, &bnd, &DFL_T) {
+                    for (t, s, soundness) in f(&r, &bnd) {
                         println!("check: {:?} {} {}", prop, t, s);
                         if let Some(model) = find_model(&soundness) {
                             println!("ERROR: {}", prop.failure_message());

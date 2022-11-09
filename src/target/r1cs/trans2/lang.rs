@@ -188,12 +188,15 @@ pub enum OpPattern {
     BoolMaj,
     /// See [Op::BoolNaryOp].
     BoolNaryOp(BoolNaryOp),
+
+    /// See [Op::BvBit].
+    BvBit,
+
     /// See [Op::PfNaryOp].
     PfNaryOp(PfNaryOp),
     /// See [Op::PfUnOp].
     PfUnOp(PfUnOp),
-    /// See [Op::BvBit].
-    BvBit,
+
 
     /// See [Op::BvBinOp].
     BvBinOp(BvBinOp),
@@ -213,6 +216,7 @@ pub enum OpPattern {
     BvUext,
     /// See [Op::BvSext].
     BvSext,
+
     /// See [Op::PfToBv].
     PfToBv,
 }
@@ -252,6 +256,8 @@ pub enum SortPattern {
     Bool,
     /// See [Sort::BitVector]
     BitVector,
+    /// See [Sort::Field]
+    Field,
 }
 
 impl From<&Sort> for SortPattern {
@@ -259,6 +265,7 @@ impl From<&Sort> for SortPattern {
         match s {
             Sort::Bool => SortPattern::Bool,
             Sort::BitVector(_) => SortPattern::BitVector,
+            Sort::Field(_) => SortPattern::Field,
             _ => unimplemented!("sort {}", s),
         }
     }
