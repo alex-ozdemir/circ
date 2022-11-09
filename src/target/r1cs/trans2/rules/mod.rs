@@ -247,6 +247,18 @@ fn bit_split(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Vec<Term>
     bits
 }
 
+fn bit_join(f: &FieldT, bits: impl Iterator<Item = Term>) -> Term {
+    let mut s = Integer::from(1);
+    let summands: Vec<Term> = bits
+        .map(|b| {
+            let t = term![PF_MUL; pf_lit(f.new_v(&s)), b];
+            s <<= 1;
+            t
+        })
+        .collect();
+    term(PF_ADD, summands)
+}
+
 fn or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
     loop {
         match args.len() {
@@ -540,7 +552,34 @@ fn bv_add(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     let w = args[0].uint().1;
     let extra_width = super::super::super::bitsize(args.len().saturating_sub(1));
     let sum = term(PF_ADD, args.iter().map(|a| a.uint().0).collect());
-    Enc::Bits(bit_split(ctx, "sum", sum, w + extra_width).into_iter().take(w).collect())
+    Enc::Bits(
+        bit_split(ctx, "sum", sum, w + extra_width)
+            .into_iter()
+            .take(w)
+            .collect(),
+    )
+}
+
+fn bv_mul(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let w = args[0].uint().1;
+    let f_width = ctx.field().modulus().significant_bits() as usize - 1;
+    let (to_split, split_w) = if args.len() * w < f_width {
+        (
+            term(PF_MUL, args.iter().map(|a| a.uint().0).collect()),
+            args.len() * w,
+        )
+    } else {
+        let p = args.iter().fold(ctx.one().clone(), |acc, v| {
+            let p = term![PF_MUL; acc, v.uint().0];
+            let mut bits = bit_split(ctx, "binMul", p, 2 * w);
+            bits.truncate(w);
+            bit_join(ctx.field(), bits.iter().cloned())
+        });
+        (p, w)
+    };
+    let mut bs = bit_split(ctx, "sum", to_split, split_w);
+    bs.truncate(w);
+    Enc::Bits(bs)
 }
 
 /// The boolean/bv -> field rewrite rules.
@@ -573,6 +612,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Or), BV, All(Bits), bv_or),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Xor), BV, All(Bits), bv_xor),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Add), BV, All(Uint), bv_add),
+        Rule::new(0, OpP::BvNaryOp(BvNaryOp::Mul), BV, All(Uint), bv_mul),
         Rule::new(0, OpP::PfToBv, BV, All(Field), pf_to_bv),
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Add), Ff, All(Field), pf_add),
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Mul), Ff, All(Field), pf_mul),
