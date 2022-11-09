@@ -4,7 +4,7 @@ use super::lang::{EncTypes, Encoding, EncodingType, OpPattern, RewriteCtx, Rule,
 use crate::ir::term::*;
 
 use circ_fields::FieldT;
-use rug::Integer;
+use rug::{ops::Pow, Integer};
 
 use std::collections::BTreeSet;
 
@@ -606,6 +606,14 @@ fn bv_concat(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(bits)
 }
 
+fn bv_sub(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let (a, n) = args[0].uint();
+    let sum = term![PF_ADD; a, ctx.f_const(Integer::from(2).pow(n as u32)), term![PF_NEG; args[1].uint().0]];
+    let mut bits = bit_split(ctx, "sub", sum, n + 1);
+    bits.truncate(n);
+    Enc::Bits(bits)
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -637,6 +645,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Xor), BV, All(Bits), bv_xor),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Add), BV, All(Uint), bv_add),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Mul), BV, All(Uint), bv_mul),
+        Rule::new(0, OpP::BvBinOp(BvBinOp::Sub), BV, All(Uint), bv_sub),
         Rule::new(0, OpP::BvExtract, BV, All(Bits), bv_extract),
         Rule::new(0, OpP::BvConcat, BV, All(Bits), bv_concat),
         Rule::new(0, OpP::PfToBv, BV, All(Field), pf_to_bv),
