@@ -1,10 +1,7 @@
 To do:
-* bv: urem
-* bv: udiv
 * bv: shl
 * bv: ashr
 * bv: lshr
-* bv: predicates
 * ff: recip (incomplete)
 * ff: const (timeout)
 * ff: ubv2pf (timeout)
@@ -13,6 +10,9 @@ To do:
 * better Pf2Bv in SMT BE
 
 Done:
+* bv: urem
+* bv: udiv
+* bv: predicates
 * bv: sub
 * bv: concat
 * bv: extract

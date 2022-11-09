@@ -89,6 +89,14 @@ impl Enc {
             _ => panic!("Tried to unwrap {:?} as field value", self),
         }
     }
+    #[track_caller]
+    pub(super) fn w(&self) -> usize {
+        match self {
+            Enc::Uint(_, u) => *u,
+            Enc::Bits(bs) => bs.len(),
+            _ => panic!("Tried to unwrap {:?} as bv uint", self),
+        }
+    }
 }
 
 impl Encoding for Enc {
@@ -259,6 +267,22 @@ fn bit_join(f: &FieldT, bits: impl Iterator<Item = Term>) -> Term {
     term(PF_ADD, summands)
 }
 
+#[allow(dead_code)]
+fn sign_bit_join(f: &FieldT, bits: &[Term]) -> Term {
+    let mut s = Integer::from(1);
+    let summands: Vec<Term> = bits
+        .iter()
+        .take(bits.len() - 1)
+        .map(|b| {
+            let t = term![PF_MUL; pf_lit(f.new_v(&s)), b.clone()];
+            s <<= 1;
+            t
+        })
+        .chain(std::iter::once(term![PF_MUL; pf_lit(f.new_v(&-(Integer::from(1) << bits.len()))), bits.last().unwrap().clone()]))
+        .collect();
+    term(PF_ADD, summands)
+}
+
 fn or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
     loop {
         match args.len() {
@@ -406,7 +430,7 @@ fn bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
 fn bv_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Uint(
         ite(args[0].bit(), args[1].uint().0, args[2].uint().0),
-        args[1].uint().1,
+        args[1].w(),
     )
 }
 
@@ -549,7 +573,7 @@ fn pf_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
 }
 
 fn bv_add(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    let w = args[0].uint().1;
+    let w = args[0].w();
     let extra_width = super::super::super::bitsize(args.len().saturating_sub(1));
     let sum = term(PF_ADD, args.iter().map(|a| a.uint().0).collect());
     Enc::Bits(
@@ -561,7 +585,7 @@ fn bv_add(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
 }
 
 fn bv_mul(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    let w = args[0].uint().1;
+    let w = args[0].w();
     let f_width = ctx.field().modulus().significant_bits() as usize - 1;
     let (to_split, split_w) = if args.len() * w < f_width {
         (
@@ -614,6 +638,119 @@ fn bv_sub(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(bits)
 }
 
+fn fits_in_bits(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Term {
+    let bits = bit_split(ctx, &format!("{}_fit", reason), x.clone(), n);
+    let sum = bit_join(ctx.field(), bits.into_iter());
+    is_zero(ctx, term![PF_ADD; sum, term![PF_NEG; x]])
+}
+
+fn bv_ge(ctx: &mut RewriteCtx, a: Term, b: Term, n: usize) -> Term {
+    fits_in_bits(ctx, "ge", term![PF_ADD; a, term![PF_NEG; b]], n)
+}
+
+fn sub_one(x: Term) -> Term {
+    let neg_one = pf_lit(FieldT::from(check(&x).as_pf()).new_v(-1));
+    term![PF_ADD; x, neg_one]
+}
+
+fn bv_uge(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bv_ge(ctx, args[0].uint().0, args[1].uint().0, args[0].w()))
+}
+
+fn bv_ugt(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bv_ge(
+        ctx,
+        sub_one(args[0].uint().0),
+        args[1].uint().0,
+        args[0].w(),
+    ))
+}
+
+fn bv_ule(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bv_ge(ctx, args[1].uint().0, args[0].uint().0, args[0].w()))
+}
+
+fn bv_ult(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bv_ge(
+        ctx,
+        sub_one(sign_bit_join(ctx.field(), args[1].bits())),
+        sign_bit_join(ctx.field(), args[0].bits()),
+        args[0].w(),
+    ))
+}
+
+fn bv_sge(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bv_ge(
+        ctx,
+        sign_bit_join(ctx.field(), args[0].bits()),
+        sign_bit_join(ctx.field(), args[1].bits()),
+        args[0].bits().len(),
+    ))
+}
+
+fn bv_sgt(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bv_ge(
+        ctx,
+        sub_one(sign_bit_join(ctx.field(), args[0].bits())),
+        sign_bit_join(ctx.field(), args[1].bits()),
+        args[0].bits().len(),
+    ))
+}
+
+fn bv_sle(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bv_ge(
+        ctx,
+        sign_bit_join(ctx.field(), args[1].bits()),
+        sign_bit_join(ctx.field(), args[0].bits()),
+        args[0].bits().len(),
+    ))
+}
+
+fn bv_slt(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(bv_ge(
+        ctx,
+        sub_one(sign_bit_join(ctx.field(), args[1].bits())),
+        sign_bit_join(ctx.field(), args[0].bits()),
+        args[0].bits().len(),
+    ))
+}
+
+// returns the bits of q and r such that a = qb + r
+// with 0 <= r < b
+//
+// if b = 0, TODO
+fn ubv_qr(ctx: &mut RewriteCtx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
+    let is_zero = is_zero(ctx, b.clone());
+    let a_bv_term = term![Op::PfToBv(n); a.clone()];
+    let b_bv_term = term![Op::PfToBv(n); b.clone()];
+    let q_term = term![Op::UbvToPf(ctx.field().clone()); term![BV_UDIV; a_bv_term.clone(), b_bv_term.clone()]];
+    let r_term = term![Op::UbvToPf(ctx.field().clone()); term![BV_UREM; a_bv_term, b_bv_term]];
+    let q = ctx.fresh("div_q", q_term);
+    let r = ctx.fresh("div_r", r_term);
+    let qb = bit_split(ctx, "div_q", q.clone(), n);
+    let rb = bit_split(ctx, "div_r", r.clone(), n);
+    ctx.assert(term![EQ; term![PF_MUL; q.clone(), b.clone()],
+    term![PF_ADD; a, term![PF_NEG; r.clone()]]]);
+    let is_gt = bv_ge(
+        ctx,
+        term![PF_ADD; b, term![PF_NEG; ctx.one().clone()]],
+        r,
+        n,
+    );
+    let is_not_ge = bool_neg(is_gt);
+    let is_not_zero = bool_neg(is_zero);
+    ctx.assert(term![EQ; term![PF_MUL; is_not_ge, is_not_zero], ctx.zero().clone()]);
+    (qb, rb)
+}
+
+fn bv_udiv(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bits(ubv_qr(ctx, args[0].uint().0, args[1].uint().0, args[0].w()).0)
+}
+
+fn bv_urem(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bits(ubv_qr(ctx, args[0].uint().0, args[1].uint().0, args[0].w()).1)
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -646,6 +783,16 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Add), BV, All(Uint), bv_add),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Mul), BV, All(Uint), bv_mul),
         Rule::new(0, OpP::BvBinOp(BvBinOp::Sub), BV, All(Uint), bv_sub),
+        Rule::new(0, OpP::BvBinOp(BvBinOp::Udiv), BV, All(Uint), bv_udiv),
+        Rule::new(0, OpP::BvBinOp(BvBinOp::Urem), BV, All(Uint), bv_urem),
+        Rule::new(0, OpP::BvBinPred(BvBinPred::Uge), BV, All(Uint), bv_uge),
+        Rule::new(0, OpP::BvBinPred(BvBinPred::Ugt), BV, All(Uint), bv_ugt),
+        Rule::new(0, OpP::BvBinPred(BvBinPred::Ule), BV, All(Uint), bv_ule),
+        Rule::new(0, OpP::BvBinPred(BvBinPred::Ult), BV, All(Uint), bv_ult),
+        Rule::new(0, OpP::BvBinPred(BvBinPred::Sge), BV, All(Bits), bv_sge),
+        Rule::new(0, OpP::BvBinPred(BvBinPred::Sgt), BV, All(Bits), bv_sgt),
+        Rule::new(0, OpP::BvBinPred(BvBinPred::Sle), BV, All(Bits), bv_sle),
+        Rule::new(0, OpP::BvBinPred(BvBinPred::Slt), BV, All(Bits), bv_slt),
         Rule::new(0, OpP::BvExtract, BV, All(Bits), bv_extract),
         Rule::new(0, OpP::BvConcat, BV, All(Bits), bv_concat),
         Rule::new(0, OpP::PfToBv, BV, All(Field), pf_to_bv),
