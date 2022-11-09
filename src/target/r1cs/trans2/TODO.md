@@ -1,6 +1,5 @@
 To do:
 * bv: mul
-* bv: add
 * bv: sub
 * bv: urem
 * bv: udiv
@@ -17,6 +16,7 @@ To do:
 * better Pf2Bv in SMT BE
 
 Done:
+* bv: add
 * ff: ite
 * ff: add
 * ff: mul

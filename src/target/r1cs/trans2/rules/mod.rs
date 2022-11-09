@@ -536,6 +536,13 @@ fn pf_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
+fn bv_add(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let w = args[0].uint().1;
+    let extra_width = super::super::super::bitsize(args.len().saturating_sub(1));
+    let sum = term(PF_ADD, args.iter().map(|a| a.uint().0).collect());
+    Enc::Bits(bit_split(ctx, "sum", sum, w + extra_width).into_iter().take(w).collect())
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -565,6 +572,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::And), BV, All(Bits), bv_and),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Or), BV, All(Bits), bv_or),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Xor), BV, All(Bits), bv_xor),
+        Rule::new(0, OpP::BvNaryOp(BvNaryOp::Add), BV, All(Uint), bv_add),
         Rule::new(0, OpP::PfToBv, BV, All(Field), pf_to_bv),
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Add), Ff, All(Field), pf_add),
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Mul), Ff, All(Field), pf_mul),
