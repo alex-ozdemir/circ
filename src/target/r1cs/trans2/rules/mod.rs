@@ -582,6 +582,30 @@ fn bv_mul(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(bs)
 }
 
+fn bv_extract(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+    if let Op::BvExtract(high, low) = op {
+        Enc::Bits(
+            args[0]
+                .bits()
+                .into_iter()
+                .skip(*low)
+                .take(*high - *low + 1)
+                .cloned()
+                .collect(),
+        )
+    } else {
+        unreachable!()
+    }
+}
+
+fn bv_concat(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let mut bits = Vec::new();
+    for a in args.iter().rev() {
+        bits.extend(a.bits().into_iter().cloned())
+    }
+    Enc::Bits(bits)
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -613,6 +637,8 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Xor), BV, All(Bits), bv_xor),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Add), BV, All(Uint), bv_add),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Mul), BV, All(Uint), bv_mul),
+        Rule::new(0, OpP::BvExtract, BV, All(Bits), bv_extract),
+        Rule::new(0, OpP::BvConcat, BV, All(Bits), bv_concat),
         Rule::new(0, OpP::PfToBv, BV, All(Field), pf_to_bv),
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Add), Ff, All(Field), pf_add),
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Mul), Ff, All(Field), pf_mul),

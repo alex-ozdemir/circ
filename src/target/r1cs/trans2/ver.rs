@@ -32,8 +32,26 @@ fn sorts(s: &SortPattern, bnd: &Bound) -> Vec<Sort> {
     }
 }
 
+/// Return all (ordered) seqs of positive ints that sum to `sum`.
+fn constant_sum_seqs(sum: usize) -> Vec<Vec<usize>> {
+    if sum == 0 {
+        vec![Vec::new()]
+    } else {
+        (1..=sum)
+            .flat_map(|last| {
+                constant_sum_seqs(sum - last)
+                    .into_iter()
+                    .map(move |mut chk| {
+                        chk.push(last);
+                        chk
+                    })
+            })
+            .collect()
+    }
+}
+
 /// Get all operators that would match this [Pattern].
-fn ops(o: &OpPattern, s: &Sort) -> Vec<Op> {
+fn ops(o: &OpPattern, s: &Sort, bnd: &Bound) -> Vec<Op> {
     match o {
         OpPattern::Const => s.elems_iter_values().map(Op::Const).collect(),
         OpPattern::Eq => vec![Op::Eq],
@@ -50,8 +68,10 @@ fn ops(o: &OpPattern, s: &Sort) -> Vec<Op> {
         OpPattern::BvNaryOp(o) => vec![Op::BvNaryOp(*o)],
         OpPattern::BvUnOp(o) => vec![Op::BvUnOp(*o)],
         OpPattern::BoolToBv => vec![Op::BoolToBv],
-        OpPattern::BvExtract => todo!(),
-        OpPattern::BvConcat => todo!(),
+        OpPattern::BvExtract => (0..(bnd.bv_bits - s.as_bv()))
+            .map(|l| Op::BvExtract(l + s.as_bv() - 1, l))
+            .collect(),
+        OpPattern::BvConcat => vec![Op::BvConcat],
         OpPattern::BvUext => (0..s.as_bv()).map(|i| Op::BvUext(i)).collect(),
         OpPattern::BvSext => (0..s.as_bv()).map(|i| Op::BvSext(i)).collect(),
         OpPattern::PfToBv => vec![Op::PfToBv(s.as_bv())],
@@ -69,6 +89,11 @@ fn arg_sorts(o: &Op, s: &Sort, bnd: &Bound) -> Vec<Vec<Sort>> {
         Op::BoolToBv => vec![vec![Sort::Bool]],
         Op::PfToBv(_) => vec![vec![Sort::Field(bnd.field.clone())]],
         Op::UbvToPf(_) => (1..bnd.bv_bits).map(|i| vec![Sort::BitVector(i)]).collect(),
+        Op::BvExtract(h, _) => (*h+1..=bnd.bv_bits).map(|w| vec![Sort::BitVector(w)]).collect(),
+        Op::BvConcat => constant_sum_seqs(s.as_bv())
+            .into_iter()
+            .map(|sizes| sizes.into_iter().map(|s| Sort::BitVector(s)).collect())
+            .collect(),
         _ => {
             if let Some(n_args) = o.arity() {
                 vec![repeat(s).take(n_args).cloned().collect()]
@@ -113,7 +138,7 @@ pub fn soundness_terms<E: VerifiableEncoding>(
 ) -> Vec<(Term, Sort, Term)> {
     let mut out = Vec::new();
     for sort in sorts(&rule.pattern().1, bnd) {
-        for op in ops(&rule.pattern().0, &sort) {
+        for op in ops(&rule.pattern().0, &sort, bnd) {
             for arg_sorts in arg_sorts(&op, &sort, bnd) {
                 let var_parts = gen_names(arg_sorts);
                 let mut assertions = Vec::new();
@@ -165,7 +190,7 @@ pub fn completeness_terms<E: VerifiableEncoding>(
 ) -> Vec<(Term, Sort, Term)> {
     let mut out = Vec::new();
     for sort in sorts(&rule.pattern().1, bnd) {
-        for op in ops(&rule.pattern().0, &sort) {
+        for op in ops(&rule.pattern().0, &sort, bnd) {
             for arg_sorts in arg_sorts(&op, &sort, bnd) {
                 let var_parts = gen_names(arg_sorts);
                 let mut assertions = Vec::new();
@@ -240,9 +265,7 @@ pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound) -> Vec<(Sort, Term)
 ///
 /// * `sort` is the sort that the term's operator may be parameterized on
 /// * `term` is a boolean term that is SAT iff the rule is incomplete.
-pub fn v_completeness_terms<E: VerifiableEncoding>(
-    bnd: &Bound,
-) -> Vec<(Sort, Term)> {
+pub fn v_completeness_terms<E: VerifiableEncoding>(bnd: &Bound) -> Vec<(Sort, Term)> {
     let mut out = Vec::new();
     let sort_patterns: BTreeSet<SortPattern> = <E::Type as EncodingType>::all()
         .into_iter()
