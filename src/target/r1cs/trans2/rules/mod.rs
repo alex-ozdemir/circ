@@ -53,6 +53,7 @@ impl EncodingType for Ty {
     fn default_for_sort(s: &Sort) -> Self {
         match s {
             Sort::Bool => Ty::Bit,
+            Sort::Field(_) => Ty::Field,
             Sort::BitVector(_) => Ty::Bits,
             _ => unimplemented!(),
         }
@@ -510,6 +511,31 @@ fn pf_neg(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Field(term![PF_NEG; args[0].field()])
 }
 
+fn pf_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Field(ite(args[0].bit(), args[1].field(), args[2].field()))
+}
+
+#[allow(dead_code)]
+fn ubv_to_pf(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Field(args[0].uint().0)
+}
+
+#[allow(dead_code)]
+fn pf_recip(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let i = ctx.fresh("inv", term![PF_RECIP; args[0].field()]);
+    ctx.assert(term![EQ; term![PF_MUL; i.clone(), args[0].field()], ctx.one().clone()]);
+    Enc::Field(i)
+}
+
+#[allow(dead_code)]
+fn pf_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
+    if let Op::Const(Value::Field(b)) = op {
+        Enc::Field(ctx.f_const(b))
+    } else {
+        unreachable!()
+    }
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -543,6 +569,13 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Add), Ff, All(Field), pf_add),
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Mul), Ff, All(Field), pf_mul),
         Rule::new(0, OpP::PfUnOp(PfUnOp::Neg), Ff, All(Field), pf_neg),
+        // TODO: incomplete
+        // Rule::new(0, OpP::PfUnOp(PfUnOp::Recip), Ff, All(Field), pf_recip),
+        // TODO: timeout
+        // Rule::new(0, OpP::UbvToPf, Ff, All(Uint), ubv_to_pf),
+        // TODO: timeout
+        // Rule::new(0, OpP::Const, Ff, All(Field), pf_const),
+        Rule::new(0, OpP::Ite, Ff, Seq(vec![Bit, Field, Field]), pf_ite),
     ]
 }
 

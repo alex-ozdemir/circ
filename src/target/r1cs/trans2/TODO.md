@@ -9,12 +9,15 @@ To do:
 * bv: lshr
 * bv: concat
 * bv: extract
-* ff: recip
+* ff: recip (incomplete)
+* ff: const (timeout)
+* ff: ubv2pf (timeout)
 * secret/public variables
 * field flatten
 * better Pf2Bv in SMT BE
 
 Done:
+* ff: ite
 * ff: add
 * ff: mul
 * ff: neg

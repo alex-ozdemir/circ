@@ -83,6 +83,7 @@ fn op_pat_string(o: &OpPattern) -> String {
         OpPattern::BvUext => format!("uext"),
         OpPattern::BvSext => format!("sext"),
         OpPattern::PfToBv => format!("pf2bv"),
+        OpPattern::UbvToPf => format!("ubv2pf"),
     }
 }
 

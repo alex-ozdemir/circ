@@ -431,6 +431,13 @@ fn preprocess(t: &Term) -> Term {
                         .collect(),
                 )
             }
+            Op::UbvToPf(field) => {
+                let input = cache.get(&n.cs[0]).unwrap().clone();
+                let n_bits = check(&input).as_bv();
+                let bits = (0..n_bits).map(|i| term![Op::BvBit(i); input.clone()]);
+                term(PF_ADD, bits.into_iter().enumerate().map(|(i, b)| 
+                    term![ITE; b, pf_lit(field.new_v(Integer::from(1) << i)), pf_lit(field.zero())]).collect())
+            }
             _ => term(
                 n.op.clone(),
                 n.cs.iter()
@@ -742,6 +749,21 @@ mod test {
         ",
         );
         assert!(!check_sat(&t));
+    }
+
+    // ignored until FF support in cvc5 is upstreamed.
+    #[ignore]
+    #[test]
+    fn ubv_to_ff_is_sat() {
+        let t = text::parse_term(
+            b"
+        (declare ((a (mod 17)))
+                (and (= #f1m17 ((ubv2pf 17) #b0001))
+                (not (= #f8m17 ((ubv2pf 17) #b1001))))
+        )
+        ",
+        );
+        assert!(check_sat(&t));
     }
 
     #[test]

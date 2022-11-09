@@ -55,6 +55,7 @@ fn ops(o: &OpPattern, s: &Sort) -> Vec<Op> {
         OpPattern::BvUext => (0..s.as_bv()).map(|i| Op::BvUext(i)).collect(),
         OpPattern::BvSext => (0..s.as_bv()).map(|i| Op::BvSext(i)).collect(),
         OpPattern::PfToBv => vec![Op::PfToBv(s.as_bv())],
+        OpPattern::UbvToPf => vec![Op::UbvToPf(FieldT::from(s.as_pf()))],
     }
 }
 
@@ -67,6 +68,7 @@ fn arg_sorts(o: &Op, s: &Sort, bnd: &Bound) -> Vec<Vec<Sort>> {
         Op::BvUext(i) | Op::BvSext(i) => vec![vec![Sort::BitVector(s.as_bv() - i)]],
         Op::BoolToBv => vec![vec![Sort::Bool]],
         Op::PfToBv(_) => vec![vec![Sort::Field(bnd.field.clone())]],
+        Op::UbvToPf(_) => (1..bnd.bv_bits).map(|i| vec![Sort::BitVector(i)]).collect(),
         _ => {
             if let Some(n_args) = o.arity() {
                 vec![repeat(s).take(n_args).cloned().collect()]

@@ -219,6 +219,8 @@ pub enum OpPattern {
 
     /// See [Op::PfToBv].
     PfToBv,
+    /// See [Op::UbvToPf].
+    UbvToPf
 }
 
 impl From<&Op> for OpPattern {
@@ -244,6 +246,7 @@ impl From<&Op> for OpPattern {
             Op::BvSext(..) => OpPattern::BvSext,
             Op::PfToBv(..) => OpPattern::PfToBv,
             Op::BoolToBv => OpPattern::BoolToBv,
+            Op::UbvToPf(..) => OpPattern::UbvToPf,
             _ => unimplemented!("op {}", op),
         }
     }
