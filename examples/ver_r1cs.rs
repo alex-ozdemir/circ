@@ -14,8 +14,11 @@ use structopt::{clap::arg_enum, StructOpt};
 #[derive(Debug, StructOpt)]
 #[structopt(name = "ver_r1cs", about = "Verifier for CirC's R1CS lowering pass")]
 struct Options {
-    #[structopt(long)]
+    #[structopt(long, short = "a")]
     max_args: usize,
+
+    #[structopt(long, short = "b")]
+    max_bv_bits: usize,
 
     #[structopt(long, short)]
     properties: Vec<Prop>,
@@ -113,7 +116,7 @@ fn main() -> Result<(), String> {
     };
     let bnd = Bound {
         args: opts.max_args,
-        bv_bits: 4,
+        bv_bits: opts.max_bv_bits,
         field: DFL_T.clone(),
     };
 
