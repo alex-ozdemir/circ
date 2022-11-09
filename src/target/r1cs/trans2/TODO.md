@@ -1,7 +1,4 @@
 To do:
-* ff: add
-* ff: mul
-* ff: neg
 * bv: mul
 * bv: add
 * bv: sub
@@ -18,6 +15,9 @@ To do:
 * better Pf2Bv in SMT BE
 
 Done:
+* ff: add
+* ff: mul
+* ff: neg
 * bv: pf2bv
 * bv: and
 * bv: or

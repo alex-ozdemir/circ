@@ -29,7 +29,7 @@ struct Options {
     #[structopt(long, short)]
     rule_types: Vec<RuleType>,
 
-    #[structopt(long, short, possible_values = &["bool", "bitvector"])]
+    #[structopt(long, short, possible_values = &["bool", "bitvector", "field"])]
     sorts: Vec<String>,
 }
 

@@ -498,11 +498,23 @@ fn pf_to_bv(ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
+fn pf_add(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Field(term(PF_ADD, args.into_iter().map(|a| a.field()).collect()))
+}
+
+fn pf_mul(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Field(term(PF_MUL, args.into_iter().map(|a| a.field()).collect()))
+}
+
+fn pf_neg(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Field(term![PF_NEG; args[0].field()])
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
     use OpPattern as OpP;
-    use SortPattern::{BitVector as BV, Bool};
+    use SortPattern::{BitVector as BV, Bool, Field as Ff};
     use Ty::*;
     vec![
         Rule::new(0, OpP::Const, Bool, All(Bit), bool_const),
@@ -528,6 +540,9 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Or), BV, All(Bits), bv_or),
         Rule::new(0, OpP::BvNaryOp(BvNaryOp::Xor), BV, All(Bits), bv_xor),
         Rule::new(0, OpP::PfToBv, BV, All(Field), pf_to_bv),
+        Rule::new(0, OpP::PfNaryOp(PfNaryOp::Add), Ff, All(Field), pf_add),
+        Rule::new(0, OpP::PfNaryOp(PfNaryOp::Mul), Ff, All(Field), pf_mul),
+        Rule::new(0, OpP::PfUnOp(PfUnOp::Neg), Ff, All(Field), pf_neg),
     ]
 }
 
