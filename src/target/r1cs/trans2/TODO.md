@@ -1,5 +1,4 @@
 To do:
-* ff: recip (incomplete)
 * ff: const (timeout)
 * ff: ubv2pf (timeout)
 * secret/public variables
@@ -22,6 +21,7 @@ Done:
 * ff: add
 * ff: mul
 * ff: neg
+* ff: recip (incomplete)
 * bv: pf2bv
 * bv: and
 * bv: or
@@ -50,6 +50,14 @@ Done:
 Bugs found:
 * ff recip
   * incomplete on input 0
+  * fix with:
+    * xi = 1 - z
+    * xz = 0
+    * iz = 0
+  * undesirable: adds *two* constraints...
+  * could achieve non-det, complete semantics with only one extra constraint:
+    * xxi = x
+    * but it's unclear how to define soundness
 * bv shifts
   * only applied to widths that are powers of 2
   * incomplete on oversized shift amounts (asserted value in range)

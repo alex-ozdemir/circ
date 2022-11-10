@@ -403,10 +403,15 @@ fn preprocess(t: &Term) -> Term {
         let new = match &n.op {
             &PF_RECIP => {
                 let i = fresh(check(&n));
-                let a = cache.get(&n.cs[0]).unwrap();
-                // ixx = x (i is the inverse, or floats if x = 0)
-                assertions
-                    .push(term![EQ; term![PF_MUL; i.clone(), a.clone(), a.clone()], a.clone()]);
+                let z = fresh(check(&n));
+                let x = cache.get(&n.cs[0]).unwrap();
+                // xi = 1 - z
+                // xz = 0
+                // iz = 0
+                let field = FieldT::from(check(&n.cs[0]).as_pf());
+                assertions.push(term![EQ; term![PF_MUL; x.clone(), i.clone()], term![PF_ADD; term![PF_NEG; z.clone()], pf_lit(field.new_v(1))]]);
+                assertions.push(term![EQ; term![PF_MUL; x.clone(), z.clone()], pf_lit(field.new_v(0))]);
+                assertions.push(term![EQ; term![PF_MUL; i.clone(), z.clone()], pf_lit(field.new_v(0))]);
                 i
             }
             Op::PfToBv(w) => {

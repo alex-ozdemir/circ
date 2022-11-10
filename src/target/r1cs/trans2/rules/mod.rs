@@ -557,10 +557,19 @@ fn ubv_to_pf(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Field(args[0].uint().0)
 }
 
-#[allow(dead_code)]
 fn pf_recip(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
-    let i = ctx.fresh("inv", term![PF_RECIP; args[0].field()]);
-    ctx.assert(term![EQ; term![PF_MUL; i.clone(), args[0].field()], ctx.one().clone()]);
+    // Used to enforce ix = 1 (incomplete on x = 0)
+    // Now we enforce:
+    // xi = 1 - z
+    // xz = 0
+    // iz = 0
+    let x = args[0].field();
+    let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
+    let z = ctx.fresh("recip_z", bool_to_field(eqz, ctx.field()));
+    let i = ctx.fresh("recip_i", term![PF_RECIP; args[0].field()]);
+    ctx.assert(term![EQ; term![PF_MUL; x.clone(), i.clone()], bool_neg(z.clone())]);
+    ctx.assert(term![EQ; term![PF_MUL; x.clone(), z.clone()], ctx.zero().clone()]);
+    ctx.assert(term![EQ; term![PF_MUL; i.clone(), z.clone()], ctx.zero().clone()]);
     Enc::Field(i)
 }
 
@@ -914,8 +923,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Add), Ff, All(Field), pf_add),
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Mul), Ff, All(Field), pf_mul),
         Rule::new(0, OpP::PfUnOp(PfUnOp::Neg), Ff, All(Field), pf_neg),
-        // TODO: incomplete
-        // Rule::new(0, OpP::PfUnOp(PfUnOp::Recip), Ff, All(Field), pf_recip),
+        Rule::new(0, OpP::PfUnOp(PfUnOp::Recip), Ff, All(Field), pf_recip),
         // TODO: timeout
         // Rule::new(0, OpP::UbvToPf, Ff, All(Uint), ubv_to_pf),
         // TODO: timeout
