@@ -43,7 +43,7 @@ pub struct ZSharpFE;
 
 impl FrontEnd for ZSharpFE {
     type Inputs = Inputs;
-    fn gen(i: Inputs) -> Computation {
+    fn gen(i: Inputs) -> Computations {
         debug!(
             "Starting Z# front-end, field: {}",
             Sort::Field(DFL_T.clone())
@@ -58,9 +58,12 @@ impl FrontEnd for ZSharpFE {
         g.generics_stack_pop();
         g.file_stack_pop();
 
-        std::rc::Rc::try_unwrap(g.into_circify().consume())
+        let mut cs = Computations::new();
+        let main_comp = std::rc::Rc::try_unwrap(g.into_circify().consume())
             .unwrap_or_else(|rc| (*rc).clone())
-            .into_inner()
+            .into_inner();
+        cs.comps.insert("main".to_string(), main_comp);
+        cs
     }
 }
 
@@ -1822,11 +1825,15 @@ impl<'ast> ZGen<'ast> {
     /*** circify wrapper functions (hides RefCell) ***/
 
     fn circ_enter_condition(&self, cond: Term) {
-        self.circ.borrow_mut().enter_condition(cond).unwrap();
+        if self.isolate_asserts {
+            self.circ.borrow_mut().enter_condition(cond).unwrap();
+        }
     }
 
     fn circ_exit_condition(&self) {
-        self.circ.borrow_mut().exit_condition()
+        if self.isolate_asserts {
+            self.circ.borrow_mut().exit_condition()
+        }
     }
 
     fn circ_condition(&self) -> Term {

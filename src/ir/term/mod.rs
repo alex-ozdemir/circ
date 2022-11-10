@@ -1409,12 +1409,12 @@ impl Value {
         }
     }
     #[track_caller]
-    /// Get the underlying bit-vector constant, or panic!
+    /// Get the underlying integer constant, or panic!
     pub fn as_int(&self) -> &Integer {
         if let Value::Int(b) = self {
             b
         } else {
-            panic!("Not a bit-vec: {}", self)
+            panic!("Not an int: {}", self)
         }
     }
     #[track_caller]
@@ -1898,7 +1898,7 @@ pub struct ComputationMetadata {
     /// All inputs, including who knows them. If no visibility is set, the input is public.
     pub input_vis: FxHashMap<String, (Term, Option<PartyId>)>,
     /// The inputs for the computation itself (not the precomputation).
-    pub computation_inputs: FxHashSet<String>,
+    pub computation_inputs: Vec<String>,
 }
 
 impl ComputationMetadata {
@@ -1920,7 +1920,7 @@ impl ComputationMetadata {
             self.input_vis.get(&input_name).unwrap()
         );
         self.input_vis.insert(input_name.clone(), (term, party));
-        self.computation_inputs.insert(input_name);
+        self.computation_inputs.push(input_name);
     }
     /// Returns None if the value is public. Otherwise, the unique party that knows it.
     pub fn get_input_visibility(&self, input_name: &str) -> Option<PartyId> {
@@ -2003,7 +2003,7 @@ impl ComputationMetadata {
             .map(|(i, n)| (n, i as u8))
             .collect();
         let next_party_id = party_ids.len() as u8;
-        let computation_inputs: FxHashSet<String> = inputs.iter().map(|(i, _)| i.clone()).collect();
+        let computation_inputs: Vec<String> = inputs.keys().cloned().collect();
         let input_vis = computation_inputs
             .iter()
             .map(|i| {
@@ -2023,7 +2023,9 @@ impl ComputationMetadata {
     /// Remove an input
     pub fn remove_var(&mut self, name: &str) {
         self.input_vis.remove(name);
-        self.computation_inputs.remove(name);
+        if let Some(pos) = self.computation_inputs.iter().position(|x| *x == name) {
+            self.computation_inputs.remove(pos);
+        }
     }
 }
 
@@ -2050,7 +2052,7 @@ impl Display for ComputationMetadata {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 /// An IR computation.
 pub struct Computation {
     /// The outputs of the computation.
@@ -2173,6 +2175,66 @@ impl Computation {
             .iter()
             .map(|o| values.get(o).unwrap().clone())
             .collect()
+    }
+}
+
+impl Serialize for Computation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let bytes = text::serialize_computation(self);
+        serializer.serialize_str(&bytes)
+    }
+}
+
+struct ComputationDeserVisitor;
+
+impl<'de> Visitor<'de> for ComputationDeserVisitor {
+    type Value = Computation;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "a string (that textually defines a term)")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: std::error::Error,
+    {
+        Ok(text::parse_computation(v.as_bytes()))
+    }
+}
+
+impl<'de> Deserialize<'de> for Computation {
+    fn deserialize<D>(deserializer: D) -> Result<Computation, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(ComputationDeserVisitor)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+/// A map of IR computations.
+pub struct Computations {
+    /// A map of function name --> function computation
+    pub comps: FxHashMap<String, Computation>,
+}
+
+impl Computations {
+    /// Create new empty computations.
+    pub fn new() -> Self {
+        Self {
+            comps: FxHashMap::default(),
+        }
+    }
+
+    /// Get computation by name
+    pub fn get(&self, name: &str) -> &Computation {
+        match self.comps.get(name) {
+            Some(c) => c,
+            None => panic!("Unknown computation: {}", name),
+        }
     }
 }
 
