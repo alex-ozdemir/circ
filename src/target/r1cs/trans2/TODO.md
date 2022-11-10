@@ -1,7 +1,4 @@
 To do:
-* bv: shl
-* bv: ashr
-* bv: lshr
 * ff: recip (incomplete)
 * ff: const (timeout)
 * ff: ubv2pf (timeout)
@@ -10,6 +7,9 @@ To do:
 * better Pf2Bv in SMT BE
 
 Done:
+* bv: shl
+* bv: ashr
+* bv: lshr
 * bv: urem
 * bv: udiv
 * bv: predicates
@@ -46,3 +46,13 @@ Done:
 * input encoding for booleans
 * boolean majority
 * fix boolean constant VC
+
+Bugs found:
+* ff recip
+  * incomplete on input 0
+* bv shifts
+  * only applied to widths that are powers of 2
+  * incomplete on oversized shift amounts (asserted value in range)
+  * the obvious way to recover completeness (remove assertion) was unsound
+    * it mod'd the shift amount rather than saturating it.
+  * now: SMT-LIB compliant

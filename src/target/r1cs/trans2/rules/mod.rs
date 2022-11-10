@@ -2,6 +2,7 @@
 
 use super::lang::{EncTypes, Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
 use crate::ir::term::*;
+use crate::target::bitsize;
 
 use circ_fields::FieldT;
 use rug::{ops::Pow, Integer};
@@ -574,7 +575,7 @@ fn pf_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
 
 fn bv_add(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     let w = args[0].w();
-    let extra_width = super::super::super::bitsize(args.len().saturating_sub(1));
+    let extra_width = bitsize(args.len().saturating_sub(1));
     let sum = term(PF_ADD, args.iter().map(|a| a.uint().0).collect());
     Enc::Bits(
         bit_split(ctx, "sum", sum, w + extra_width)
@@ -751,6 +752,111 @@ fn bv_urem(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(ubv_qr(ctx, args[0].uint().0, args[1].uint().0, args[0].w()).1)
 }
 
+/// Shift `x` left by `2^y`, if bit-valued `c` is true.
+fn const_pow_shift_bv(ctx: &mut RewriteCtx, x: Term, y: usize, c: Term) -> Term {
+    ite(c, term![PF_MUL; x.clone(), ctx.f_const(1 << (1 << y))], x)
+}
+
+/// Shift `x` left by `y`, filling the blank spots with bit-valued `ext_bit`.
+/// Returns an *oversized* number
+fn shift_bv(ctx: &mut RewriteCtx, x: Term, y: Vec<Term>, ext_bit: Option<Term>) -> Term {
+    if let Some(b) = ext_bit {
+        let left = shift_bv(ctx, x, y.clone(), None);
+        let right = sub_one(shift_bv(ctx, b.clone(), y, None));
+        term![PF_ADD; left, term![PF_MUL; b, right]]
+    } else {
+        y.into_iter()
+            .enumerate()
+            .fold(x, |x, (i, yi)| const_pow_shift_bv(ctx, x, i, yi))
+    }
+}
+
+/// Shift `x` left by `y`, filling the blank spots with bit-valued `ext_bit`.
+/// Returns a bit sequence.
+///
+/// If `c` is true, returns bit sequence which is just a copy of `ext_bit`.
+fn shift_bv_bits(
+    ctx: &mut RewriteCtx,
+    x: Term,
+    y: Vec<Term>,
+    ext_bit: Option<Term>,
+    x_w: usize,
+    c: Term,
+) -> Vec<Term> {
+    let y_w = y.len();
+    let mask = match ext_bit.as_ref() {
+        Some(e) => term![PF_MUL; e.clone(), ctx.f_const((1 << x_w) - 1)],
+        None => ctx.zero().clone(),
+    };
+    let s = shift_bv(ctx, x, y, ext_bit);
+    let masked_s = ite(c, mask, s);
+    let mut bits = bit_split(ctx, "shift", masked_s, (1 << y_w) + x_w - 1);
+    bits.truncate(x_w);
+    bits
+}
+
+/// Given a shift amount expressed as a bit-sequence, splits that shift into low bits and high
+/// bits. The number of low bits, `b`, is the minimum amount such that `data_w-1` is representable
+/// in `b` bits. The rest of the bits (the high ones) are or'd together into a single bit that is
+/// returned.
+fn split_shift_amt(
+    ctx: &mut RewriteCtx,
+    data_w: usize,
+    mut shift_amt: Vec<Term>,
+) -> (Term, Vec<Term>) {
+    let b = bitsize(data_w - 1);
+    let some_high_bit = or_helper(ctx, shift_amt.drain(b..).collect());
+    (some_high_bit, shift_amt)
+}
+
+fn bv_shl(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let (high, low) = split_shift_amt(ctx, args[1].w(), args[1].bits().to_owned());
+    Enc::Bits(shift_bv_bits(
+        ctx,
+        args[0].uint().0,
+        low,
+        None,
+        args[0].w(),
+        high,
+    ))
+}
+
+fn bv_ashr(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let (high, low) = split_shift_amt(ctx, args[1].w(), args[1].bits().to_owned());
+    let rev_data = bit_join(ctx.field(), args[0].bits().into_iter().rev().cloned());
+    Enc::Bits(
+        shift_bv_bits(
+            ctx,
+            rev_data,
+            low,
+            args[0].bits().last().cloned(),
+            args[0].w(),
+            high,
+        )
+        .into_iter()
+        .rev()
+        .collect(),
+    )
+}
+
+fn bv_lshr(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+    let (high, low) = split_shift_amt(ctx, args[1].w(), args[1].bits().to_owned());
+    let rev_data = bit_join(ctx.field(), args[0].bits().into_iter().rev().cloned());
+    Enc::Bits(
+        shift_bv_bits(
+            ctx,
+            rev_data,
+            low,
+            None,
+            args[0].w(),
+            high,
+        )
+        .into_iter()
+        .rev()
+        .collect(),
+    )
+}
+
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
@@ -785,6 +891,15 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::BvBinOp(BvBinOp::Sub), BV, All(Uint), bv_sub),
         Rule::new(0, OpP::BvBinOp(BvBinOp::Udiv), BV, All(Uint), bv_udiv),
         Rule::new(0, OpP::BvBinOp(BvBinOp::Urem), BV, All(Uint), bv_urem),
+        Rule::new(
+            0,
+            OpP::BvBinOp(BvBinOp::Shl),
+            BV,
+            Seq(vec![Uint, Bits]),
+            bv_shl,
+        ),
+        Rule::new(0, OpP::BvBinOp(BvBinOp::Ashr), BV, All(Bits), bv_ashr),
+        Rule::new(0, OpP::BvBinOp(BvBinOp::Lshr), BV, All(Bits), bv_lshr),
         Rule::new(0, OpP::BvBinPred(BvBinPred::Uge), BV, All(Uint), bv_uge),
         Rule::new(0, OpP::BvBinPred(BvBinPred::Ugt), BV, All(Uint), bv_ugt),
         Rule::new(0, OpP::BvBinPred(BvBinPred::Ule), BV, All(Uint), bv_ule),

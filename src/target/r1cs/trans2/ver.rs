@@ -89,7 +89,9 @@ fn arg_sorts(o: &Op, s: &Sort, bnd: &Bound) -> Vec<Vec<Sort>> {
         Op::BoolToBv => vec![vec![Sort::Bool]],
         Op::PfToBv(_) => vec![vec![Sort::Field(bnd.field.clone())]],
         Op::UbvToPf(_) => (1..bnd.bv_bits).map(|i| vec![Sort::BitVector(i)]).collect(),
-        Op::BvExtract(h, _) => (*h+1..=bnd.bv_bits).map(|w| vec![Sort::BitVector(w)]).collect(),
+        Op::BvExtract(h, _) => (*h + 1..=bnd.bv_bits)
+            .map(|w| vec![Sort::BitVector(w)])
+            .collect(),
         Op::BvConcat => constant_sum_seqs(s.as_bv())
             .into_iter()
             .map(|sizes| sizes.into_iter().map(|s| Sort::BitVector(s)).collect())
