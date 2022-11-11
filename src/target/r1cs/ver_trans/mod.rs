@@ -3,6 +3,7 @@
 use crate::ir::term::Computation;
 use circ_fields::FieldT;
 
+pub mod ast;
 pub mod lang;
 pub mod rules;
 mod runtime;
