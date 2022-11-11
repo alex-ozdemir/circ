@@ -9,7 +9,7 @@ use crate::ir::term::*;
 use circ_fields::FieldT;
 use rug::Integer;
 
-pub use super::ast::{OpPattern, SortPattern, Pattern};
+pub use super::ast::{OpPat, SortPat, Pattern};
 
 /// The type of an encoding.
 ///
@@ -18,7 +18,7 @@ pub use super::ast::{OpPattern, SortPattern, Pattern};
 /// cheapest.
 pub trait EncodingType: Copy + Hash + Eq + Debug + Ord + 'static {
     /// Get the sort (pattern) for this encoding type.
-    fn sort(&self) -> SortPattern;
+    fn sort(&self) -> SortPat;
     /// A list of all encoding types.
     fn all() -> Vec<Self>;
     /// Get the default type for a variable.
@@ -134,8 +134,8 @@ impl<E: Encoding> Rule<E> {
     /// Create a new rule.
     pub(super) fn new<F: Fn(&mut Ctx, &Op, &[&E]) -> E + 'static>(
         id: usize,
-        op_pattern: OpPattern,
-        sort: SortPattern,
+        op_pattern: OpPat,
+        sort: SortPat,
         encoding_types: EncTypes<E::Type>,
         f: F,
     ) -> Self {
@@ -165,7 +165,7 @@ impl<E: Encoding> Rule<E> {
 
     /// Apply the rule
     pub(super) fn apply(&self, c: &mut Ctx, t: &Op, args: &[&E]) -> E {
-        debug_assert_eq!(&OpPattern::from(t), &self.pattern.0);
+        debug_assert_eq!(&OpPat::from(t), &self.pattern.0);
         for (i, a) in args.iter().enumerate() {
             debug_assert_eq!(a.type_(), self.encoding_ty(i));
         }

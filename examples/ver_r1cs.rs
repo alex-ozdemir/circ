@@ -1,6 +1,6 @@
 use circ::ir::term::text::*;
 use circ::target::r1cs::ver_trans::{
-    lang::{OpPattern, SortPattern},
+    lang::{OpPattern, SortPat},
     rules::{rules, Enc},
     ver::{
         c_completeness_terms, c_soundness_terms, completeness_terms, soundness_terms,
@@ -90,11 +90,11 @@ fn op_pat_string(o: &OpPattern) -> String {
     }
 }
 
-fn sort_pat_string(s: &SortPattern) -> String {
+fn sort_pat_string(s: &SortPat) -> String {
     match s {
-        SortPattern::Bool => format!("bool"),
-        SortPattern::BitVector => format!("bitvector"),
-        SortPattern::Field => format!("field"),
+        SortPat::Bool => format!("bool"),
+        SortPat::BitVector => format!("bitvector"),
+        SortPat::Field => format!("field"),
     }
 }
 

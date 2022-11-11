@@ -1,16 +1,16 @@
 //! Data-types used by the equiSAT rewriting language
 //!
 //! Comprises:
-//! * [OpPattern]: expresses an *unindexed* operator (e.g. a constant without its value, or
+//! * [OpPat]: expresses an *unindexed* operator (e.g. a constant without its value, or
 //!   bit-vector signed extension without the number of added bits).
-//! * [SortPattern]: expresses an *unindexed* sort (e.g., a bit-vector of unspecified width).
+//! * [SortPat]: expresses an *unindexed* sort (e.g., a bit-vector of unspecified width).
 //! * [Pattern]: contains the two above.
 
 use crate::ir::term::*;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 /// A pattern for operators
-pub enum OpPattern {
+pub enum OpPat {
     /// Any constant.
     Const,
     /// See [Op::Eq].
@@ -60,30 +60,30 @@ pub enum OpPattern {
     UbvToPf
 }
 
-impl From<&Op> for OpPattern {
+impl From<&Op> for OpPat {
     fn from(op: &Op) -> Self {
         match op {
-            Op::Const(..) => OpPattern::Const,
-            Op::Eq => OpPattern::Eq,
-            Op::Ite => OpPattern::Ite,
-            Op::Not => OpPattern::Not,
-            Op::BoolMaj => OpPattern::BoolMaj,
-            Op::Implies => OpPattern::Implies,
-            Op::BoolNaryOp(b) => OpPattern::BoolNaryOp(*b),
-            Op::PfNaryOp(b) => OpPattern::PfNaryOp(*b),
-            Op::PfUnOp(b) => OpPattern::PfUnOp(*b),
-            Op::BvBit(_) => OpPattern::BvBit,
-            Op::BvUnOp(b) => OpPattern::BvUnOp(*b),
-            Op::BvNaryOp(b) => OpPattern::BvNaryOp(*b),
-            Op::BvBinPred(b) => OpPattern::BvBinPred(*b),
-            Op::BvBinOp(b) => OpPattern::BvBinOp(*b),
-            Op::BvExtract(..) => OpPattern::BvExtract,
-            Op::BvConcat => OpPattern::BvConcat,
-            Op::BvUext(..) => OpPattern::BvUext,
-            Op::BvSext(..) => OpPattern::BvSext,
-            Op::PfToBv(..) => OpPattern::PfToBv,
-            Op::BoolToBv => OpPattern::BoolToBv,
-            Op::UbvToPf(..) => OpPattern::UbvToPf,
+            Op::Const(..) => OpPat::Const,
+            Op::Eq => OpPat::Eq,
+            Op::Ite => OpPat::Ite,
+            Op::Not => OpPat::Not,
+            Op::BoolMaj => OpPat::BoolMaj,
+            Op::Implies => OpPat::Implies,
+            Op::BoolNaryOp(b) => OpPat::BoolNaryOp(*b),
+            Op::PfNaryOp(b) => OpPat::PfNaryOp(*b),
+            Op::PfUnOp(b) => OpPat::PfUnOp(*b),
+            Op::BvBit(_) => OpPat::BvBit,
+            Op::BvUnOp(b) => OpPat::BvUnOp(*b),
+            Op::BvNaryOp(b) => OpPat::BvNaryOp(*b),
+            Op::BvBinPred(b) => OpPat::BvBinPred(*b),
+            Op::BvBinOp(b) => OpPat::BvBinOp(*b),
+            Op::BvExtract(..) => OpPat::BvExtract,
+            Op::BvConcat => OpPat::BvConcat,
+            Op::BvUext(..) => OpPat::BvUext,
+            Op::BvSext(..) => OpPat::BvSext,
+            Op::PfToBv(..) => OpPat::PfToBv,
+            Op::BoolToBv => OpPat::BoolToBv,
+            Op::UbvToPf(..) => OpPat::UbvToPf,
             _ => unimplemented!("op {}", op),
         }
     }
@@ -91,7 +91,7 @@ impl From<&Op> for OpPattern {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
 /// An abstraction of [Sort]
-pub enum SortPattern {
+pub enum SortPat {
     /// See [Sort::Bool]
     Bool,
     /// See [Sort::BitVector]
@@ -100,12 +100,12 @@ pub enum SortPattern {
     Field,
 }
 
-impl From<&Sort> for SortPattern {
+impl From<&Sort> for SortPat {
     fn from(s: &Sort) -> Self {
         match s {
-            Sort::Bool => SortPattern::Bool,
-            Sort::BitVector(_) => SortPattern::BitVector,
-            Sort::Field(_) => SortPattern::Field,
+            Sort::Bool => SortPat::Bool,
+            Sort::BitVector(_) => SortPat::BitVector,
+            Sort::Field(_) => SortPat::Field,
             _ => unimplemented!("sort {}", s),
         }
     }
@@ -113,7 +113,7 @@ impl From<&Sort> for SortPattern {
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
 /// A pattern for sorted operators
-pub struct Pattern(pub OpPattern, pub SortPattern);
+pub struct Pattern(pub OpPat, pub SortPat);
 
 impl<'a> From<&'a Term> for Pattern {
     fn from(t: &'a Term) -> Self {
@@ -125,8 +125,8 @@ impl<'a> From<&'a Term> for Pattern {
             _ => t,
         };
         Pattern(
-            OpPattern::from(&t.op),
-            SortPattern::from(&check(term_of_type_param)),
+            OpPat::from(&t.op),
+            SortPat::from(&check(term_of_type_param)),
         )
     }
 }

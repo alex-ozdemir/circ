@@ -1,6 +1,6 @@
 //! Verification machinery
 #[allow(unused_imports)]
-use super::lang::{Encoding, EncodingType, OpPattern, Ctx, Rule, SortPattern};
+use super::lang::{Encoding, EncodingType, OpPat, Ctx, Rule, SortPat};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 use std::collections::BTreeSet;
@@ -23,12 +23,12 @@ pub struct Bound {
     pub field: FieldT,
 }
 
-/// Get all sorts for a [SortPattern]
-fn sorts(s: &SortPattern, bnd: &Bound) -> Vec<Sort> {
+/// Get all sorts for a [SortPat]
+fn sorts(s: &SortPat, bnd: &Bound) -> Vec<Sort> {
     match s {
-        SortPattern::BitVector => (1..=bnd.bv_bits).map(Sort::BitVector).collect(),
-        SortPattern::Bool => vec![Sort::Bool],
-        SortPattern::Field => vec![Sort::Field(bnd.field.clone())],
+        SortPat::BitVector => (1..=bnd.bv_bits).map(Sort::BitVector).collect(),
+        SortPat::Bool => vec![Sort::Bool],
+        SortPat::Field => vec![Sort::Field(bnd.field.clone())],
     }
 }
 
@@ -51,31 +51,31 @@ fn constant_sum_seqs(sum: usize) -> Vec<Vec<usize>> {
 }
 
 /// Get all operators that would match this [Pattern].
-fn ops(o: &OpPattern, s: &Sort, bnd: &Bound) -> Vec<Op> {
+fn ops(o: &OpPat, s: &Sort, bnd: &Bound) -> Vec<Op> {
     match o {
-        OpPattern::Const => s.elems_iter_values().map(Op::Const).collect(),
-        OpPattern::Eq => vec![Op::Eq],
-        OpPattern::Ite => vec![Op::Ite],
-        OpPattern::Not => vec![Op::Not],
-        OpPattern::BoolMaj => vec![Op::BoolMaj],
-        OpPattern::Implies => vec![Op::Implies],
-        OpPattern::BoolNaryOp(o) => vec![Op::BoolNaryOp(*o)],
-        OpPattern::PfUnOp(o) => vec![Op::PfUnOp(*o)],
-        OpPattern::PfNaryOp(o) => vec![Op::PfNaryOp(*o)],
-        OpPattern::BvBit => (0..s.as_bv()).map(|i| Op::BvBit(i)).collect(),
-        OpPattern::BvBinOp(o) => vec![Op::BvBinOp(*o)],
-        OpPattern::BvBinPred(o) => vec![Op::BvBinPred(*o)],
-        OpPattern::BvNaryOp(o) => vec![Op::BvNaryOp(*o)],
-        OpPattern::BvUnOp(o) => vec![Op::BvUnOp(*o)],
-        OpPattern::BoolToBv => vec![Op::BoolToBv],
-        OpPattern::BvExtract => (0..(bnd.bv_bits - s.as_bv()))
+        OpPat::Const => s.elems_iter_values().map(Op::Const).collect(),
+        OpPat::Eq => vec![Op::Eq],
+        OpPat::Ite => vec![Op::Ite],
+        OpPat::Not => vec![Op::Not],
+        OpPat::BoolMaj => vec![Op::BoolMaj],
+        OpPat::Implies => vec![Op::Implies],
+        OpPat::BoolNaryOp(o) => vec![Op::BoolNaryOp(*o)],
+        OpPat::PfUnOp(o) => vec![Op::PfUnOp(*o)],
+        OpPat::PfNaryOp(o) => vec![Op::PfNaryOp(*o)],
+        OpPat::BvBit => (0..s.as_bv()).map(|i| Op::BvBit(i)).collect(),
+        OpPat::BvBinOp(o) => vec![Op::BvBinOp(*o)],
+        OpPat::BvBinPred(o) => vec![Op::BvBinPred(*o)],
+        OpPat::BvNaryOp(o) => vec![Op::BvNaryOp(*o)],
+        OpPat::BvUnOp(o) => vec![Op::BvUnOp(*o)],
+        OpPat::BoolToBv => vec![Op::BoolToBv],
+        OpPat::BvExtract => (0..(bnd.bv_bits - s.as_bv()))
             .map(|l| Op::BvExtract(l + s.as_bv() - 1, l))
             .collect(),
-        OpPattern::BvConcat => vec![Op::BvConcat],
-        OpPattern::BvUext => (0..s.as_bv()).map(|i| Op::BvUext(i)).collect(),
-        OpPattern::BvSext => (0..s.as_bv()).map(|i| Op::BvSext(i)).collect(),
-        OpPattern::PfToBv => vec![Op::PfToBv(s.as_bv())],
-        OpPattern::UbvToPf => vec![Op::UbvToPf(FieldT::from(s.as_pf()))],
+        OpPat::BvConcat => vec![Op::BvConcat],
+        OpPat::BvUext => (0..s.as_bv()).map(|i| Op::BvUext(i)).collect(),
+        OpPat::BvSext => (0..s.as_bv()).map(|i| Op::BvSext(i)).collect(),
+        OpPat::PfToBv => vec![Op::PfToBv(s.as_bv())],
+        OpPat::UbvToPf => vec![Op::UbvToPf(FieldT::from(s.as_pf()))],
     }
 }
 
@@ -239,7 +239,7 @@ pub fn completeness_terms<E: VerifiableEncoding>(
 /// * `soundness` is a boolean term that is SAT iff the rule is unsound.
 pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound) -> Vec<(Sort, Term)> {
     let mut out = Vec::new();
-    let sort_patterns: BTreeSet<SortPattern> = <E::Type as EncodingType>::all()
+    let sort_patterns: BTreeSet<SortPat> = <E::Type as EncodingType>::all()
         .into_iter()
         .map(|t| t.sort())
         .collect();
@@ -269,7 +269,7 @@ pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound) -> Vec<(Sort, Term)
 /// * `term` is a boolean term that is SAT iff the rule is incomplete.
 pub fn v_completeness_terms<E: VerifiableEncoding>(bnd: &Bound) -> Vec<(Sort, Term)> {
     let mut out = Vec::new();
-    let sort_patterns: BTreeSet<SortPattern> = <E::Type as EncodingType>::all()
+    let sort_patterns: BTreeSet<SortPat> = <E::Type as EncodingType>::all()
         .into_iter()
         .map(|t| t.sort())
         .collect();

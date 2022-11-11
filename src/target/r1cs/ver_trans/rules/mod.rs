@@ -1,6 +1,6 @@
 //! Rules for lowering booleans and bit-vectors to a field
 
-use super::lang::{EncTypes, Encoding, EncodingType, OpPattern, Ctx, Rule, SortPattern};
+use super::lang::{EncTypes, Encoding, EncodingType, OpPat, Ctx, Rule, SortPat};
 use crate::ir::term::*;
 use crate::target::bitsize;
 
@@ -38,12 +38,12 @@ pub enum Ty {
 }
 
 impl EncodingType for Ty {
-    fn sort(&self) -> SortPattern {
+    fn sort(&self) -> SortPat {
         match self {
-            Ty::Bit => SortPattern::Bool,
-            Ty::Bits => SortPattern::BitVector,
-            Ty::Uint => SortPattern::BitVector,
-            Ty::Field => SortPattern::Field,
+            Ty::Bit => SortPat::Bool,
+            Ty::Bits => SortPat::BitVector,
+            Ty::Uint => SortPat::BitVector,
+            Ty::Field => SortPat::Field,
         }
     }
 
@@ -120,7 +120,7 @@ impl Encoding for Enc {
     }
 
     fn variable(ctx: &mut Ctx, name: &str, sort: &Sort, ty: Ty) -> Self {
-        assert_eq!(SortPattern::from(sort), ty.sort());
+        assert_eq!(SortPat::from(sort), ty.sort());
         let t = leaf_term(Op::Var(name.into(), sort.clone()));
         match ty {
             Ty::Bit => {
@@ -869,8 +869,8 @@ fn bv_lshr(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 /// The boolean/bv -> field rewrite rules.
 pub fn rules() -> Vec<Rule<Enc>> {
     use EncTypes::*;
-    use OpPattern as OpP;
-    use SortPattern::{BitVector as BV, Bool, Field as Ff};
+    use OpPat as OpP;
+    use SortPat::{BitVector as BV, Bool, Field as Ff};
     use Ty::*;
     vec![
         Rule::new(0, OpP::Const, Bool, All(Bit), bool_const),
