@@ -1,4 +1,4 @@
-use super::lang::{Chooser, Encoding, Pattern, Ctx, Rule};
+use super::lang::{RuleChooser, Encoding, Pattern, Ctx, Rule};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 
@@ -7,13 +7,13 @@ use std::collections::BTreeSet;
 
 struct Rewriter<E: Encoding> {
     rules: HashMap<Pattern, Vec<Rule<E>>>,
-    chooser: Chooser<E::Type>,
+    chooser: RuleChooser<E::Type>,
     encs: HashMap<(Term, E::Type), E>,
     types: TermMap<BTreeSet<E::Type>>,
 }
 
 impl<E: Encoding> Rewriter<E> {
-    fn new(rws: Vec<Rule<E>>, chooser: Chooser<E::Type>) -> Self {
+    fn new(rws: Vec<Rule<E>>, chooser: RuleChooser<E::Type>) -> Self {
         let mut rules_table: HashMap<Pattern, Vec<Rule<E>>> = HashMap::default();
         for r in rws {
             let existing = rules_table.entry(*r.pattern()).or_insert_with(Vec::new);
@@ -90,7 +90,7 @@ impl<E: Encoding> Rewriter<E> {
 /// Apply some rules to translated a computation into a field.
 pub fn apply_rules<E: Encoding>(
     rws: Vec<Rule<E>>,
-    chooser: Chooser<E::Type>,
+    chooser: RuleChooser<E::Type>,
     field: FieldT,
     mut computation: Computation,
 ) -> Computation {

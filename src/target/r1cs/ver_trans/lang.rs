@@ -63,7 +63,7 @@ pub enum EncTypes<T: EncodingType> {
 }
 
 /// Chooses a rule for a term given the available encodings for the arguments.
-pub(super) type Chooser<T> = Box<dyn Fn(&Term, &[&BTreeSet<T>]) -> usize>;
+pub(super) type RuleChooser<T> = Box<dyn Fn(&Term, &[&BTreeSet<T>]) -> usize>;
 
 #[derive(Debug)]
 /// The context in which a rewrite is performed
