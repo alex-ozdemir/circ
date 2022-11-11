@@ -1,5 +1,5 @@
 use circ::ir::term::text::*;
-use circ::target::r1cs::trans2::{
+use circ::target::r1cs::ver_trans::{
     lang::{OpPattern, SortPattern},
     rules::{rules, Enc},
     ver::{

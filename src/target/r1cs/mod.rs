@@ -18,7 +18,7 @@ pub mod opt;
 #[cfg(feature = "r1cs")]
 pub mod spartan;
 pub mod trans;
-pub mod trans2;
+pub mod ver_trans;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// A Rank 1 Constraint System.
