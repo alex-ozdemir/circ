@@ -1,6 +1,6 @@
 //! Rules for lowering booleans and bit-vectors to a field
 
-use super::lang::{EncTypes, Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
+use super::lang::{EncTypes, Encoding, EncodingType, OpPattern, Ctx, Rule, SortPattern};
 use crate::ir::term::*;
 use crate::target::bitsize;
 
@@ -119,7 +119,7 @@ impl Encoding for Enc {
         }
     }
 
-    fn variable(ctx: &mut RewriteCtx, name: &str, sort: &Sort, ty: Ty) -> Self {
+    fn variable(ctx: &mut Ctx, name: &str, sort: &Sort, ty: Ty) -> Self {
         assert_eq!(SortPattern::from(sort), ty.sort());
         let t = leaf_term(Op::Var(name.into(), sort.clone()));
         match ty {
@@ -159,7 +159,7 @@ impl Encoding for Enc {
         }
     }
 
-    fn convert(&self, ctx: &mut RewriteCtx, to: Self::Type) -> Self {
+    fn convert(&self, ctx: &mut Ctx, to: Self::Type) -> Self {
         match (self, to) {
             (Self::Bits(bs), Ty::Uint) => {
                 let field = FieldT::from(check(&bs[0]).as_pf());
@@ -214,7 +214,7 @@ fn bool_to_field(t: Term, f: &FieldT) -> Term {
     term![ITE; t, pf_lit(f.new_v(1)), pf_lit(f.new_v(0))]
 }
 
-fn is_zero(ctx: &mut RewriteCtx, x: Term) -> Term {
+fn is_zero(ctx: &mut Ctx, x: Term) -> Term {
     let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
     // is_zero_inv * x == 1 - is_zero
     // is_zero * x == 0
@@ -228,12 +228,12 @@ fn is_zero(ctx: &mut RewriteCtx, x: Term) -> Term {
     is_zero
 }
 
-fn ensure_bit(ctx: &mut RewriteCtx, b: Term) {
+fn ensure_bit(ctx: &mut Ctx, b: Term) {
     let b_minus_one = term![PF_ADD; b.clone(), term![PF_NEG; ctx.one().clone()]];
     ctx.assert(term![EQ; term![PF_MUL; b_minus_one, b], ctx.zero().clone()]);
 }
 
-fn bit_split(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Vec<Term> {
+fn bit_split(ctx: &mut Ctx, reason: &str, x: Term, n: usize) -> Vec<Term> {
     let x_bv = term![Op::PfToBv(n); x.clone()];
     let bits: Vec<Term> = (0..n)
         .map(|i| {
@@ -284,7 +284,7 @@ fn sign_bit_join(f: &FieldT, bits: &[Term]) -> Term {
     term(PF_ADD, summands)
 }
 
-fn or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
+fn or_helper(ctx: &mut Ctx, mut args: Vec<Term>) -> Term {
     loop {
         match args.len() {
             0 => return ctx.zero().clone(),
@@ -309,18 +309,18 @@ fn or_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
     }
 }
 
-fn or(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn or(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(or_helper(ctx, args.iter().map(|a| a.bit()).collect()))
 }
 
-fn and(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn and(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bool_neg(or_helper(
         ctx,
         args.iter().map(|a| bool_neg(a.bit())).collect(),
     )))
 }
 
-fn bool_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bool_eq(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(term![PF_ADD;
         ctx.one().clone(),
         term![PF_NEG; args[0].bit()],
@@ -328,11 +328,11 @@ fn bool_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
         term![PF_MUL; ctx.f_const(2), args[0].bit(), args[1].bit()]])
 }
 
-fn xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn xor(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(xor_helper(ctx, args.iter().map(|a| a.bit()).collect()))
 }
 
-fn xor_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
+fn xor_helper(ctx: &mut Ctx, mut args: Vec<Term>) -> Term {
     loop {
         match args.len() {
             0 => break ctx.zero().clone(),
@@ -359,11 +359,11 @@ fn xor_helper(ctx: &mut RewriteCtx, mut args: Vec<Term>) -> Term {
     }
 }
 
-fn not(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn not(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bool_neg(args[0].bit()))
 }
 
-fn implies(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn implies(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bool_neg(
         term![PF_MUL; args[0].bit(), bool_neg(args[1].bit())],
     ))
@@ -373,11 +373,11 @@ fn ite(c: Term, t: Term, f: Term) -> Term {
     term![PF_ADD; term![PF_MUL; c, term![PF_ADD; t, term![PF_NEG; f.clone()]]], f]
 }
 
-fn bool_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bool_ite(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(ite(args[0].bit(), args[1].bit(), args[2].bit()))
 }
 
-fn bool_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
+fn bool_const(ctx: &mut Ctx, op: &Op, _args: &[&Enc]) -> Enc {
     if let Op::Const(Value::Bool(b)) = op {
         Enc::Bit(if *b {
             ctx.one().clone()
@@ -389,7 +389,7 @@ fn bool_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
-fn maj(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn maj(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     if let [a, b, c] = args {
         // m = ab + bc + ca - 2abc
         // m = ab + c(b + a - 2ab)
@@ -402,7 +402,7 @@ fn maj(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
-fn bv_bit(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+fn bv_bit(_ctx: &mut Ctx, op: &Op, args: &[&Enc]) -> Enc {
     if let Op::BvBit(i) = op {
         Enc::Bit(args[0].bits()[*i].clone())
     } else {
@@ -410,7 +410,7 @@ fn bv_bit(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
-fn bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
+fn bv_const(ctx: &mut Ctx, op: &Op, _args: &[&Enc]) -> Enc {
     if let Op::Const(Value::BitVector(bv)) = op {
         Enc::Bits(
             (0..bv.width())
@@ -428,18 +428,18 @@ fn bv_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
-fn bv_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_ite(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Uint(
         ite(args[0].bit(), args[1].uint().0, args[2].uint().0),
         args[1].w(),
     )
 }
 
-fn bv_not(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_not(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(args[0].bits().iter().map(|b| bool_neg(b.clone())).collect())
 }
 
-fn bv_neg(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_neg(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let (x, w) = args[0].uint();
     let field = FieldT::from(check(&x).as_pf());
     let zero = is_zero(ctx, x.clone());
@@ -447,14 +447,14 @@ fn bv_neg(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Uint(ite(zero, pf_lit(field.new_v(0)), diff), w)
 }
 
-fn bv_eq(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_eq(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(is_zero(
         ctx,
         term![PF_ADD; args[0].uint().0, term![PF_NEG; args[1].uint().0]],
     ))
 }
 
-fn bv_uext_bits(ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+fn bv_uext_bits(ctx: &mut Ctx, op: &Op, args: &[&Enc]) -> Enc {
     match op {
         Op::BvUext(n) => Enc::Bits(
             args[0]
@@ -468,7 +468,7 @@ fn bv_uext_bits(ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
-fn bv_uext_uint(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+fn bv_uext_uint(_ctx: &mut Ctx, op: &Op, args: &[&Enc]) -> Enc {
     if let Op::BvUext(n) = op {
         let (x, w) = args[0].uint();
         Enc::Uint(x, w + *n)
@@ -477,7 +477,7 @@ fn bv_uext_uint(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
-fn bv_sext(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+fn bv_sext(_ctx: &mut Ctx, op: &Op, args: &[&Enc]) -> Enc {
     match op {
         Op::BvSext(n) => Enc::Bits({
             let mut bits = args[0].bits().into_iter().rev();
@@ -488,7 +488,7 @@ fn bv_sext(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
-fn bool_to_bv(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bool_to_bv(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(vec![args[0].bit()])
 }
 
@@ -502,7 +502,7 @@ fn transpose_bits(args: &[&Enc]) -> Vec<Vec<Term>> {
     bits
 }
 
-fn bv_and(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_and(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(
         transpose_bits(args)
             .into_iter()
@@ -511,7 +511,7 @@ fn bv_and(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     )
 }
 
-fn bv_or(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_or(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(
         transpose_bits(args)
             .into_iter()
@@ -520,7 +520,7 @@ fn bv_or(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     )
 }
 
-fn bv_xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_xor(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(
         transpose_bits(args)
             .into_iter()
@@ -529,35 +529,35 @@ fn bv_xor(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     )
 }
 
-fn pf_to_bv(ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+fn pf_to_bv(ctx: &mut Ctx, op: &Op, args: &[&Enc]) -> Enc {
     match op {
         Op::PfToBv(w) => Enc::Bits(bit_split(ctx, "pf_to_field", args[0].field(), *w)),
         _ => unreachable!(),
     }
 }
 
-fn pf_add(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn pf_add(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Field(term(PF_ADD, args.into_iter().map(|a| a.field()).collect()))
 }
 
-fn pf_mul(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn pf_mul(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Field(term(PF_MUL, args.into_iter().map(|a| a.field()).collect()))
 }
 
-fn pf_neg(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn pf_neg(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Field(term![PF_NEG; args[0].field()])
 }
 
-fn pf_ite(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn pf_ite(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Field(ite(args[0].bit(), args[1].field(), args[2].field()))
 }
 
 #[allow(dead_code)]
-fn ubv_to_pf(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn ubv_to_pf(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Field(args[0].uint().0)
 }
 
-fn pf_recip(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn pf_recip(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     // Used to enforce ix = 1 (incomplete on x = 0)
     // Now we enforce:
     // xi = 1 - z
@@ -574,7 +574,7 @@ fn pf_recip(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
 }
 
 #[allow(dead_code)]
-fn pf_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
+fn pf_const(ctx: &mut Ctx, op: &Op, _args: &[&Enc]) -> Enc {
     if let Op::Const(Value::Field(b)) = op {
         Enc::Field(ctx.f_const(b))
     } else {
@@ -582,7 +582,7 @@ fn pf_const(ctx: &mut RewriteCtx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
-fn bv_add(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_add(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let w = args[0].w();
     let extra_width = bitsize(args.len().saturating_sub(1));
     let sum = term(PF_ADD, args.iter().map(|a| a.uint().0).collect());
@@ -594,7 +594,7 @@ fn bv_add(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     )
 }
 
-fn bv_mul(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_mul(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let w = args[0].w();
     let f_width = ctx.field().modulus().significant_bits() as usize - 1;
     let (to_split, split_w) = if args.len() * w < f_width {
@@ -616,7 +616,7 @@ fn bv_mul(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(bs)
 }
 
-fn bv_extract(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
+fn bv_extract(_ctx: &mut Ctx, op: &Op, args: &[&Enc]) -> Enc {
     if let Op::BvExtract(high, low) = op {
         Enc::Bits(
             args[0]
@@ -632,7 +632,7 @@ fn bv_extract(_ctx: &mut RewriteCtx, op: &Op, args: &[&Enc]) -> Enc {
     }
 }
 
-fn bv_concat(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_concat(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let mut bits = Vec::new();
     for a in args.iter().rev() {
         bits.extend(a.bits().into_iter().cloned())
@@ -640,7 +640,7 @@ fn bv_concat(_ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(bits)
 }
 
-fn bv_sub(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_sub(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let (a, n) = args[0].uint();
     let sum = term![PF_ADD; a, ctx.f_const(Integer::from(2).pow(n as u32)), term![PF_NEG; args[1].uint().0]];
     let mut bits = bit_split(ctx, "sub", sum, n + 1);
@@ -648,13 +648,13 @@ fn bv_sub(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(bits)
 }
 
-fn fits_in_bits(ctx: &mut RewriteCtx, reason: &str, x: Term, n: usize) -> Term {
+fn fits_in_bits(ctx: &mut Ctx, reason: &str, x: Term, n: usize) -> Term {
     let bits = bit_split(ctx, &format!("{}_fit", reason), x.clone(), n);
     let sum = bit_join(ctx.field(), bits.into_iter());
     is_zero(ctx, term![PF_ADD; sum, term![PF_NEG; x]])
 }
 
-fn bv_ge(ctx: &mut RewriteCtx, a: Term, b: Term, n: usize) -> Term {
+fn bv_ge(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> Term {
     fits_in_bits(ctx, "ge", term![PF_ADD; a, term![PF_NEG; b]], n)
 }
 
@@ -663,11 +663,11 @@ fn sub_one(x: Term) -> Term {
     term![PF_ADD; x, neg_one]
 }
 
-fn bv_uge(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_uge(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bv_ge(ctx, args[0].uint().0, args[1].uint().0, args[0].w()))
 }
 
-fn bv_ugt(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_ugt(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bv_ge(
         ctx,
         sub_one(args[0].uint().0),
@@ -676,11 +676,11 @@ fn bv_ugt(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     ))
 }
 
-fn bv_ule(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_ule(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bv_ge(ctx, args[1].uint().0, args[0].uint().0, args[0].w()))
 }
 
-fn bv_ult(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_ult(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bv_ge(
         ctx,
         sub_one(sign_bit_join(ctx.field(), args[1].bits())),
@@ -689,7 +689,7 @@ fn bv_ult(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     ))
 }
 
-fn bv_sge(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_sge(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bv_ge(
         ctx,
         sign_bit_join(ctx.field(), args[0].bits()),
@@ -698,7 +698,7 @@ fn bv_sge(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     ))
 }
 
-fn bv_sgt(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_sgt(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bv_ge(
         ctx,
         sub_one(sign_bit_join(ctx.field(), args[0].bits())),
@@ -707,7 +707,7 @@ fn bv_sgt(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     ))
 }
 
-fn bv_sle(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_sle(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bv_ge(
         ctx,
         sign_bit_join(ctx.field(), args[1].bits()),
@@ -716,7 +716,7 @@ fn bv_sle(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     ))
 }
 
-fn bv_slt(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_slt(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(bv_ge(
         ctx,
         sub_one(sign_bit_join(ctx.field(), args[1].bits())),
@@ -729,7 +729,7 @@ fn bv_slt(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
 // with 0 <= r < b
 //
 // if b = 0, TODO
-fn ubv_qr(ctx: &mut RewriteCtx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
+fn ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
     let is_zero = is_zero(ctx, b.clone());
     let a_bv_term = term![Op::PfToBv(n); a.clone()];
     let b_bv_term = term![Op::PfToBv(n); b.clone()];
@@ -753,22 +753,22 @@ fn ubv_qr(ctx: &mut RewriteCtx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<T
     (qb, rb)
 }
 
-fn bv_udiv(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_udiv(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(ubv_qr(ctx, args[0].uint().0, args[1].uint().0, args[0].w()).0)
 }
 
-fn bv_urem(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_urem(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(ubv_qr(ctx, args[0].uint().0, args[1].uint().0, args[0].w()).1)
 }
 
 /// Shift `x` left by `2^y`, if bit-valued `c` is true.
-fn const_pow_shift_bv(ctx: &mut RewriteCtx, x: Term, y: usize, c: Term) -> Term {
+fn const_pow_shift_bv(ctx: &mut Ctx, x: Term, y: usize, c: Term) -> Term {
     ite(c, term![PF_MUL; x.clone(), ctx.f_const(1 << (1 << y))], x)
 }
 
 /// Shift `x` left by `y`, filling the blank spots with bit-valued `ext_bit`.
 /// Returns an *oversized* number
-fn shift_bv(ctx: &mut RewriteCtx, x: Term, y: Vec<Term>, ext_bit: Option<Term>) -> Term {
+fn shift_bv(ctx: &mut Ctx, x: Term, y: Vec<Term>, ext_bit: Option<Term>) -> Term {
     if let Some(b) = ext_bit {
         let left = shift_bv(ctx, x, y.clone(), None);
         let right = sub_one(shift_bv(ctx, b.clone(), y, None));
@@ -785,7 +785,7 @@ fn shift_bv(ctx: &mut RewriteCtx, x: Term, y: Vec<Term>, ext_bit: Option<Term>) 
 ///
 /// If `c` is true, returns bit sequence which is just a copy of `ext_bit`.
 fn shift_bv_bits(
-    ctx: &mut RewriteCtx,
+    ctx: &mut Ctx,
     x: Term,
     y: Vec<Term>,
     ext_bit: Option<Term>,
@@ -809,7 +809,7 @@ fn shift_bv_bits(
 /// in `b` bits. The rest of the bits (the high ones) are or'd together into a single bit that is
 /// returned.
 fn split_shift_amt(
-    ctx: &mut RewriteCtx,
+    ctx: &mut Ctx,
     data_w: usize,
     mut shift_amt: Vec<Term>,
 ) -> (Term, Vec<Term>) {
@@ -818,7 +818,7 @@ fn split_shift_amt(
     (some_high_bit, shift_amt)
 }
 
-fn bv_shl(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_shl(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let (high, low) = split_shift_amt(ctx, args[1].w(), args[1].bits().to_owned());
     Enc::Bits(shift_bv_bits(
         ctx,
@@ -830,7 +830,7 @@ fn bv_shl(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     ))
 }
 
-fn bv_ashr(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_ashr(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let (high, low) = split_shift_amt(ctx, args[1].w(), args[1].bits().to_owned());
     let rev_data = bit_join(ctx.field(), args[0].bits().into_iter().rev().cloned());
     Enc::Bits(
@@ -848,7 +848,7 @@ fn bv_ashr(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
     )
 }
 
-fn bv_lshr(ctx: &mut RewriteCtx, _op: &Op, args: &[&Enc]) -> Enc {
+fn bv_lshr(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let (high, low) = split_shift_amt(ctx, args[1].w(), args[1].bits().to_owned());
     let rev_data = bit_join(ctx.field(), args[0].bits().into_iter().rev().cloned());
     Enc::Bits(

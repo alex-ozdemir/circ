@@ -1,6 +1,6 @@
 //! Verification machinery
 #[allow(unused_imports)]
-use super::lang::{Encoding, EncodingType, OpPattern, RewriteCtx, Rule, SortPattern};
+use super::lang::{Encoding, EncodingType, OpPattern, Ctx, Rule, SortPattern};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 use std::collections::BTreeSet;
@@ -152,7 +152,7 @@ pub fn soundness_terms<E: VerifiableEncoding>(
                     .collect();
 
                 // validly encode them
-                let mut ctx = RewriteCtx::new(bnd.field.clone());
+                let mut ctx = Ctx::new(bnd.field.clone());
                 let e_args: Vec<E> = var_parts
                     .iter()
                     .zip(&args)
@@ -204,7 +204,7 @@ pub fn completeness_terms<E: VerifiableEncoding>(
                     .collect();
 
                 // encode them
-                let mut ctx = RewriteCtx::new(bnd.field.clone());
+                let mut ctx = Ctx::new(bnd.field.clone());
                 let e_args: Vec<E> = var_parts
                     .iter()
                     .enumerate()
@@ -245,7 +245,7 @@ pub fn v_soundness_terms<E: VerifiableEncoding>(bnd: &Bound) -> Vec<(Sort, Term)
         .collect();
     for sort_pattern in sort_patterns {
         for sort in sorts(&sort_pattern, bnd) {
-            let mut ctx = RewriteCtx::new(bnd.field.clone());
+            let mut ctx = Ctx::new(bnd.field.clone());
             let name = "a".to_owned();
             let e = E::d_variable(&mut ctx, &name, &sort);
             let var = leaf_term(Op::Var(name.clone(), sort.clone()));
@@ -275,7 +275,7 @@ pub fn v_completeness_terms<E: VerifiableEncoding>(bnd: &Bound) -> Vec<(Sort, Te
         .collect();
     for sort_pattern in sort_patterns {
         for sort in sorts(&sort_pattern, bnd) {
-            let mut ctx = RewriteCtx::new(bnd.field.clone());
+            let mut ctx = Ctx::new(bnd.field.clone());
             let name = "a".to_owned();
             let _e = E::d_variable(&mut ctx, &name, &sort);
             let mut assertions = Vec::new();
@@ -309,7 +309,7 @@ pub fn c_soundness_terms<E: VerifiableEncoding>(
         for to in <E::Type as EncodingType>::all() {
             if from != to && from.sort() == to.sort() {
                 for sort in sorts(&from.sort(), bnd) {
-                    let mut ctx = RewriteCtx::new(bnd.field.clone());
+                    let mut ctx = Ctx::new(bnd.field.clone());
                     let name = "a".to_owned();
                     let e = E::variable(&mut ctx, &name, &sort, from);
                     let var = leaf_term(Op::Var(name, sort.clone()));
@@ -345,7 +345,7 @@ pub fn c_completeness_terms<E: VerifiableEncoding>(
         for to in <E::Type as EncodingType>::all() {
             if from != to && from.sort() == to.sort() {
                 for sort in sorts(&from.sort(), bnd) {
-                    let mut ctx = RewriteCtx::new(bnd.field.clone());
+                    let mut ctx = Ctx::new(bnd.field.clone());
                     let name = "a".to_owned();
                     let e = E::variable(&mut ctx, &name, &sort, from);
                     let _e2 = e.convert(&mut ctx, to);

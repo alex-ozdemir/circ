@@ -38,13 +38,13 @@ pub trait Encoding: Clone + Debug {
     /// Will only be called with a type `to` whose sort agrees.
     ///
     /// Must return an encoding of the type `to`.
-    fn convert(&self, c: &mut RewriteCtx, to: Self::Type) -> Self;
+    fn convert(&self, c: &mut Ctx, to: Self::Type) -> Self;
     /// Embed a variable.
     ///
     /// Must return an `e` such that `e.type_()` is equal to `ty`.
-    fn variable(c: &mut RewriteCtx, name: &str, sort: &Sort, ty: Self::Type) -> Self;
+    fn variable(c: &mut Ctx, name: &str, sort: &Sort, ty: Self::Type) -> Self;
     /// The above, but with the default encoding type.
-    fn d_variable(c: &mut RewriteCtx, name: &str, sort: &Sort) -> Self {
+    fn d_variable(c: &mut Ctx, name: &str, sort: &Sort) -> Self {
         Self::variable(
             c,
             name,
@@ -67,7 +67,7 @@ pub(super) type Chooser<T> = Box<dyn Fn(&Term, &[&BTreeSet<T>]) -> usize>;
 
 #[derive(Debug)]
 /// The context in which a rewrite is performed
-pub struct RewriteCtx {
+pub struct Ctx {
     /// Assertions
     pub assertions: Vec<Term>,
     /// New variables that we introduce
@@ -77,7 +77,7 @@ pub struct RewriteCtx {
     one: Term,
 }
 
-impl RewriteCtx {
+impl Ctx {
     /// Create a new context
     pub fn new(field: FieldT) -> Self {
         Self {
@@ -127,12 +127,12 @@ pub struct Rule<E: Encoding> {
     pub id: usize,
     pattern: Pattern,
     encoding_types: EncTypes<E::Type>,
-    fn_: Box<dyn Fn(&mut RewriteCtx, &Op, &[&E]) -> E>,
+    fn_: Box<dyn Fn(&mut Ctx, &Op, &[&E]) -> E>,
 }
 
 impl<E: Encoding> Rule<E> {
     /// Create a new rule.
-    pub(super) fn new<F: Fn(&mut RewriteCtx, &Op, &[&E]) -> E + 'static>(
+    pub(super) fn new<F: Fn(&mut Ctx, &Op, &[&E]) -> E + 'static>(
         id: usize,
         op_pattern: OpPattern,
         sort: SortPattern,
@@ -164,7 +164,7 @@ impl<E: Encoding> Rule<E> {
     }
 
     /// Apply the rule
-    pub(super) fn apply(&self, c: &mut RewriteCtx, t: &Op, args: &[&E]) -> E {
+    pub(super) fn apply(&self, c: &mut Ctx, t: &Op, args: &[&E]) -> E {
         debug_assert_eq!(&OpPattern::from(t), &self.pattern.0);
         for (i, a) in args.iter().enumerate() {
             debug_assert_eq!(a.type_(), self.encoding_ty(i));

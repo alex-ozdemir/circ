@@ -1,4 +1,4 @@
-use super::lang::{Chooser, Encoding, Pattern, RewriteCtx, Rule};
+use super::lang::{Chooser, Encoding, Pattern, Ctx, Rule};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 
@@ -44,14 +44,14 @@ impl<E: Encoding> Rewriter<E> {
     fn get_enc(&self, t: &Term, ty: E::Type) -> &E {
         self.encs.get(&(t.clone(), ty)).unwrap()
     }
-    fn ensure_enc(&mut self, c: &mut RewriteCtx, t: &Term, ty: E::Type) {
+    fn ensure_enc(&mut self, c: &mut Ctx, t: &Term, ty: E::Type) {
         if !self.encs.contains_key(&(t.clone(), ty)) {
             let from_ty = self.get_max_ty(t);
             let new_e = self.encs.get(&(t.clone(), from_ty)).unwrap().convert(c, ty);
             self.add(t.clone(), new_e);
         }
     }
-    fn visit(&mut self, c: &mut RewriteCtx, t: Term) {
+    fn visit(&mut self, c: &mut Ctx, t: Term) {
         let new = if let Op::Var(name, sort) = &t.op {
             E::d_variable(c, name, sort)
         } else {
@@ -96,7 +96,7 @@ pub fn apply_rules<E: Encoding>(
 ) -> Computation {
     assert!(computation.outputs.len() == 1);
     let mut rewriter = Rewriter::new(rws, chooser);
-    let mut ctx = RewriteCtx::new(field.clone());
+    let mut ctx = Ctx::new(field.clone());
     for t in computation.terms_postorder() {
         rewriter.visit(&mut ctx, t);
     }
