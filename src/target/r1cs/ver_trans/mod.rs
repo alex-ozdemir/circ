@@ -25,6 +25,7 @@ mod test {
     use crate::ir::proof::Constraints;
     use crate::ir::term::*;
     use crate::target::r1cs::trans::test::PureBool;
+    use crate::ir::term::dist::test::ArbitraryTermEnv;
     use crate::util::field::DFL_T;
     use rug::Integer;
     use quickcheck_macros::quickcheck;
@@ -237,6 +238,19 @@ mod test {
         );
         assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
         let cs2 = apply(&FieldT::from(Integer::from(17)), cs);
+        assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
+    }
+
+    #[quickcheck]
+    fn random_bool_opt(ArbitraryTermEnv(t, values): ArbitraryTermEnv) {
+        let v = eval(&t, &values);
+        let t = term![Op::Eq; t, leaf_term(Op::Const(v))];
+        let mut cs = Computation::from_constraint_system_parts(vec![t], Vec::new());
+        assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
+        crate::ir::opt::scalarize_vars::scalarize_inputs(&mut cs);
+        crate::ir::opt::tuple::eliminate_tuples(&mut cs);
+        assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
+        let cs2 = apply(&DFL_T, cs);
         assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
     }
 }
