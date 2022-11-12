@@ -4,21 +4,19 @@ use super::super::ver::VerifiableEncoding;
 use super::Enc;
 use crate::ir::term::*;
 
-use circ_fields::FieldT;
-
 use rug::Integer;
 
 impl VerifiableEncoding for Enc {
     fn is_valid(&self, t: Term) -> Term {
         match self {
             Enc::Bit(f) => {
-                let field = FieldT::from(check(f).as_pf());
+                let field = check(f).as_pf().clone();
                 let f_valid = term![EQ; term![PF_MUL; f.clone(), f.clone()], f.clone()];
                 let f_is_1 = term![EQ; f.clone(), pf_lit(field.new_v(1))];
                 term![AND; f_valid, term![EQ; t.clone(), f_is_1]]
             }
             Enc::Bits(fs) => {
-                let field = FieldT::from(check(&fs[0]).as_pf());
+                let field = check(&fs[0]).as_pf().clone();
                 let one = pf_lit(field.new_v(1));
                 let zero = pf_lit(field.new_v(0));
                 term(
@@ -33,7 +31,7 @@ impl VerifiableEncoding for Enc {
                 )
             }
             Enc::Uint(f, _) => {
-                let field = FieldT::from(check(f).as_pf());
+                let field = check(f).as_pf().clone();
                 let n_bits = check(&t).as_bv();
                 let one = pf_lit(field.new_v(1));
                 let zero = pf_lit(field.new_v(0));

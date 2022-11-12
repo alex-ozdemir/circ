@@ -998,9 +998,9 @@ impl Sort {
 
     #[track_caller]
     /// Unwrap the modulus of this prime field, panicking otherwise.
-    pub fn as_pf(&self) -> Arc<Integer> {
+    pub fn as_pf(&self) -> &FieldT {
         if let Sort::Field(fty) = self {
-            fty.modulus_arc()
+            fty
         } else {
             panic!("{} is not a field", self)
         }

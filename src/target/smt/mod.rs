@@ -7,8 +7,6 @@
 use crate::ir::opt::cfold::fold;
 use crate::ir::term::*;
 
-use circ_fields::FieldT;
-
 use rsmt2::errors::SmtRes;
 use rsmt2::parse::{IdentParser, ModelParser, SmtParser};
 use rsmt2::print::{Expr2Smt, Sort2Smt, Sym2Smt};
@@ -408,18 +406,20 @@ fn preprocess(t: &Term) -> Term {
                 // xi = 1 - z
                 // xz = 0
                 // iz = 0
-                let field = FieldT::from(check(&n.cs[0]).as_pf());
+                let field = check(&n.cs[0]).as_pf().clone();
                 assertions.push(term![EQ; term![PF_MUL; x.clone(), i.clone()], term![PF_ADD; term![PF_NEG; z.clone()], pf_lit(field.new_v(1))]]);
                 assertions.push(term![EQ; term![PF_MUL; x.clone(), z.clone()], pf_lit(field.new_v(0))]);
                 assertions.push(term![EQ; term![PF_MUL; i.clone(), z.clone()], pf_lit(field.new_v(0))]);
                 i
             }
             Op::PfToBv(w) => {
-                let field = FieldT::from(check(&n.cs[0]).as_pf());
+                let field = check(&n.cs[0]).as_pf().clone();
                 let x = cache.get(&n.cs[0]).unwrap().clone();
-                let p = term(PF_MUL, (0..(1 << *w)).map(|i| term![PF_ADD; x.clone(), pf_lit(field.new_v(-i))]).collect());
                 let z = pf_lit(field.new_v(0));
-                let x_or_zero = term![ITE; term![EQ; p, z.clone()], x, z];
+//                 let p = term(PF_MUL, (0..(1 << *w)).map(|i| term![PF_ADD; x.clone(), pf_lit(field.new_v(-i))]).collect());
+//                 let p_ok = term![EQ; p, z.clone()];
+                let other_p_ok = term(OR, (0..(1 << *w)).map(|i| term![EQ; x.clone(), pf_lit(field.new_v(i))]).collect());
+                let x_or_zero = term![ITE; other_p_ok, x, z];
                 let bits: Vec<Term> = (0..*w).map(|_| fresh(Sort::Bool)).collect();
                 let scale_sum: Term = term(
                     PF_ADD,

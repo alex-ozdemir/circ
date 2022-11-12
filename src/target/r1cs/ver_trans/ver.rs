@@ -75,7 +75,7 @@ fn ops(o: &OpPat, s: &Sort, bnd: &Bound) -> Vec<Op> {
         OpPat::BvUext => (0..s.as_bv()).map(|i| Op::BvUext(i)).collect(),
         OpPat::BvSext => (0..s.as_bv()).map(|i| Op::BvSext(i)).collect(),
         OpPat::PfToBv => vec![Op::PfToBv(s.as_bv())],
-        OpPat::UbvToPf => vec![Op::UbvToPf(FieldT::from(s.as_pf()))],
+        OpPat::UbvToPf => vec![Op::UbvToPf(s.as_pf().clone())],
     }
 }
 
@@ -210,6 +210,9 @@ pub fn completeness_terms<E: VerifiableEncoding>(
                     .enumerate()
                     .map(|(i, (n, s))| E::variable(&mut ctx, n, s, rule.encoding_ty(i)))
                     .collect();
+
+                // we check encodings separately
+                ctx.assertions.clear();
 
                 // apply the lowering rule
                 let t = term(op.clone(), args.clone());

@@ -11,6 +11,8 @@ use circ::target::smt::find_model;
 use circ::util::field::DFL_T;
 use structopt::{clap::arg_enum, StructOpt};
 
+use std::time::Instant;
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "ver_r1cs", about = "Verifier for CirC's R1CS lowering pass")]
 struct Options {
@@ -208,6 +210,7 @@ fn main() -> Result<(), String> {
                     };
                     for (t, s, soundness) in f(&r, &bnd) {
                         println!("check: {:?} {} {}", prop, t, s);
+                        let start = Instant::now();
                         if let Some(model) = find_model(&soundness) {
                             println!("ERROR: {}", prop.failure_message());
                             println!(
@@ -220,6 +223,7 @@ fn main() -> Result<(), String> {
                             );
                             return Err(format!("ERROR: {}", prop.failure_message()));
                         }
+                        println!("  time: {:.3}", start.elapsed().as_secs_f64());
                     }
                 }
             }

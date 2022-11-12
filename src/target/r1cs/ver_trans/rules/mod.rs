@@ -113,7 +113,7 @@ impl Encoding for Enc {
 
     fn as_bool_term(&self) -> Term {
         if let Enc::Bit(b) = self {
-            term![EQ; b.clone(), pf_lit(FieldT::from(check(b).as_pf()).new_v(1))]
+            term![EQ; b.clone(), pf_lit(check(b).as_pf().new_v(1))]
         } else {
             panic!("Cannot output encoding {:?}", self);
         }
@@ -162,7 +162,7 @@ impl Encoding for Enc {
     fn convert(&self, ctx: &mut Ctx, to: Self::Type) -> Self {
         match (self, to) {
             (Self::Bits(bs), Ty::Uint) => {
-                let field = FieldT::from(check(&bs[0]).as_pf());
+                let field = check(&bs[0]).as_pf().clone();
                 Enc::Uint(term(
                     PF_ADD,
                     bs.iter()
@@ -182,7 +182,7 @@ impl Encoding for Enc {
                         v
                     })
                     .collect();
-                let field = FieldT::from(check(&t).as_pf());
+                let field = check(&t).as_pf().clone();
                 let sum = term(
                     PF_ADD,
                     bits.iter()
@@ -439,7 +439,7 @@ fn bv_not(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 
 fn bv_neg(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let (x, w) = args[0].uint();
-    let field = FieldT::from(check(&x).as_pf());
+    let field = check(&x).as_pf().clone();
     let zero = is_zero(ctx, x.clone());
     let diff = pf_sub(pf_lit(field.new_v(Integer::from(1) << w)), x);
     Enc::Uint(ite(zero, pf_lit(field.new_v(0)), diff), w)
@@ -661,7 +661,7 @@ fn bv_cmp(ctx: &mut Ctx, a: Term, b: Term, n: usize, strict: bool) -> Term {
 }
 
 fn sub_one(x: Term) -> Term {
-    let neg_one = pf_lit(FieldT::from(check(&x).as_pf()).new_v(-1));
+    let neg_one = pf_lit(check(&x).as_pf().new_v(-1));
     term![PF_ADD; x, neg_one]
 }
 
