@@ -52,6 +52,11 @@ pub trait Encoding: Clone + Debug {
             <Self::Type as EncodingType>::default_for_sort(sort),
         )
     }
+    /// Return the list of all rules applicable to this encoding.
+    fn rules() -> Vec<Rule<Self>>;
+
+    /// Choose a rule for this term given these available encodings.
+    fn choose(t: &Term, available_encs: &[&BTreeSet<Self::Type>]) -> usize;
 }
 
 /// How inputs should be encoded for a [Rule].
@@ -61,9 +66,6 @@ pub enum EncTypes<T: EncodingType> {
     /// Encoded these ways.
     Seq(Vec<T>),
 }
-
-/// Chooses a rule for a term given the available encodings for the arguments.
-pub(super) type RuleChooser<T> = Box<dyn Fn(&Term, &[&BTreeSet<T>]) -> usize>;
 
 #[derive(Debug)]
 /// The context in which a rewrite is performed

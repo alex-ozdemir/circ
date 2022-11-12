@@ -1,4 +1,4 @@
-use super::lang::{RuleChooser, Encoding, Pattern, Ctx, Rule};
+use super::lang::{Encoding, Pattern, Ctx, Rule};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 
@@ -7,15 +7,14 @@ use std::collections::BTreeSet;
 
 struct Rewriter<E: Encoding> {
     rules: HashMap<Pattern, Vec<Rule<E>>>,
-    chooser: RuleChooser<E::Type>,
     encs: HashMap<(Term, E::Type), E>,
     types: TermMap<BTreeSet<E::Type>>,
 }
 
 impl<E: Encoding> Rewriter<E> {
-    fn new(rws: Vec<Rule<E>>, chooser: RuleChooser<E::Type>) -> Self {
+    fn new() -> Self {
         let mut rules_table: HashMap<Pattern, Vec<Rule<E>>> = HashMap::default();
-        for r in rws {
+        for r in E::rules() {
             let existing = rules_table.entry(*r.pattern()).or_insert_with(Vec::new);
             if existing.iter().find(|e_r| e_r.id == r.id).is_some() {
                 panic!("Two rules for {:?}. Use different IDs.", r.pattern())
@@ -24,7 +23,6 @@ impl<E: Encoding> Rewriter<E> {
         }
         Self {
             rules: rules_table,
-            chooser,
             encs: Default::default(),
             types: Default::default(),
         }
@@ -65,7 +63,7 @@ impl<E: Encoding> Rewriter<E> {
             } else {
                 let available: Vec<&BTreeSet<E::Type>> =
                     t.cs.iter().map(|c| self.get_types(c)).collect();
-                let id = (self.chooser)(&t, &available);
+                let id = E::choose(&t, &available);
                 rules
                     .iter()
                     .find(|r| r.id == id)
@@ -89,20 +87,26 @@ impl<E: Encoding> Rewriter<E> {
 
 /// Apply some rules to translated a computation into a field.
 pub fn apply_rules<E: Encoding>(
-    rws: Vec<Rule<E>>,
-    chooser: RuleChooser<E::Type>,
     field: FieldT,
     mut computation: Computation,
 ) -> Computation {
     assert!(computation.outputs.len() == 1);
-    let mut rewriter = Rewriter::new(rws, chooser);
+    let mut rewriter = Rewriter::<E>::new();
     let mut ctx = Ctx::new(field.clone());
     for t in computation.terms_postorder() {
         rewriter.visit(&mut ctx, t);
     }
-    let ty = rewriter.get_max_ty(&computation.outputs()[0]);
-    let e = rewriter.get_enc(&computation.outputs()[0].clone(), ty);
-    ctx.assert(e.as_bool_term());
+    let o = &computation.outputs()[0];
+    // process top-level assertions separately.
+    let assertions = match &o.op {
+        &AND => o.cs.clone(),
+        _ => vec![o.clone()],
+    };
+    for a in assertions {
+        let ty = rewriter.get_max_ty(&a);
+        let e = rewriter.get_enc(&a, ty);
+        ctx.assert(e.as_bool_term());
+    }
     computation.outputs = vec![term(AND, ctx.assertions)];
     for (value, name) in ctx.new_variables {
         computation.extend_precomputation(name, value);

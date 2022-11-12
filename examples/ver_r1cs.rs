@@ -1,7 +1,7 @@
 use circ::ir::term::text::*;
 use circ::target::r1cs::ver_trans::{
-    lang::{OpPat, SortPat},
-    rules::{rules, Enc},
+    lang::{OpPat, SortPat, Encoding},
+    rules::Enc,
     ver::{
         c_completeness_terms, c_soundness_terms, completeness_terms, soundness_terms,
         v_completeness_terms, v_soundness_terms, Bound,
@@ -197,7 +197,7 @@ fn main() -> Result<(), String> {
     }
 
     if rule_types.contains(&RuleType::Enc) {
-        for r in rules() {
+        for r in Enc::rules() {
             let op_ok = opts.ops.is_empty() || opts.ops.contains(&op_pat_string(&r.pattern().0));
             let ex_op_ok = !opts.excluded_ops.contains(&sort_pat_string(&r.pattern().1));
             let sort_ok =

@@ -200,6 +200,85 @@ impl Encoding for Enc {
             _ => unimplemented!("invalid conversion"),
         }
     }
+
+    /// The boolean/bv -> field rewrite rules.
+    fn rules() -> Vec<Rule<Enc>> {
+        use EncTypes::*;
+        use OpPat as OpP;
+        use SortPat::{BitVector as BV, Bool, Field as Ff};
+        use Ty::*;
+        vec![
+            Rule::new(0, OpP::Const, Bool, All(Bit), bool_const),
+            Rule::new(0, OpP::Eq, Bool, All(Bit), bool_eq),
+            Rule::new(0, OpP::Ite, Bool, All(Bit), bool_ite),
+            Rule::new(0, OpP::Not, Bool, All(Bit), not),
+            Rule::new(0, OpP::BoolMaj, Bool, All(Bit), maj),
+            Rule::new(0, OpP::Implies, Bool, All(Bit), implies),
+            Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Xor), Bool, All(Bit), xor),
+            Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Or), Bool, All(Bit), or),
+            Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::And), Bool, All(Bit), and),
+            Rule::new(0, OpP::Const, BV, All(Bit), bv_const),
+            Rule::new(0, OpP::BvBit, BV, All(Bits), bv_bit),
+            Rule::new(0, OpP::Ite, BV, Seq(vec![Bit, Uint, Uint]), bv_ite),
+            Rule::new(0, OpP::BvUnOp(BvUnOp::Not), BV, All(Bits), bv_not),
+            Rule::new(0, OpP::BvUnOp(BvUnOp::Neg), BV, All(Uint), bv_neg),
+            Rule::new(0, OpP::Eq, BV, All(Uint), bv_eq),
+            Rule::new(0, OpP::BvUext, BV, All(Bits), bv_uext_bits),
+            Rule::new(1, OpP::BvUext, BV, All(Uint), bv_uext_uint),
+            Rule::new(0, OpP::BvSext, BV, All(Bits), bv_sext),
+            Rule::new(0, OpP::BoolToBv, BV, All(Bit), bool_to_bv),
+            Rule::new(0, OpP::BvNaryOp(BvNaryOp::And), BV, All(Bits), bv_and),
+            Rule::new(0, OpP::BvNaryOp(BvNaryOp::Or), BV, All(Bits), bv_or),
+            Rule::new(0, OpP::BvNaryOp(BvNaryOp::Xor), BV, All(Bits), bv_xor),
+            Rule::new(0, OpP::BvNaryOp(BvNaryOp::Add), BV, All(Uint), bv_add),
+            Rule::new(0, OpP::BvNaryOp(BvNaryOp::Mul), BV, All(Uint), bv_mul),
+            Rule::new(0, OpP::BvBinOp(BvBinOp::Sub), BV, All(Uint), bv_sub),
+            Rule::new(0, OpP::BvBinOp(BvBinOp::Udiv), BV, All(Uint), bv_udiv),
+            Rule::new(0, OpP::BvBinOp(BvBinOp::Urem), BV, All(Uint), bv_urem),
+            Rule::new(
+                0,
+                OpP::BvBinOp(BvBinOp::Shl),
+                BV,
+                Seq(vec![Uint, Bits]),
+                bv_shl,
+            ),
+            Rule::new(0, OpP::BvBinOp(BvBinOp::Ashr), BV, All(Bits), bv_ashr),
+            Rule::new(0, OpP::BvBinOp(BvBinOp::Lshr), BV, All(Bits), bv_lshr),
+            Rule::new(0, OpP::BvBinPred(BvBinPred::Uge), BV, All(Uint), bv_uge),
+            Rule::new(0, OpP::BvBinPred(BvBinPred::Ugt), BV, All(Uint), bv_ugt),
+            Rule::new(0, OpP::BvBinPred(BvBinPred::Ule), BV, All(Uint), bv_ule),
+            Rule::new(0, OpP::BvBinPred(BvBinPred::Ult), BV, All(Uint), bv_ult),
+            Rule::new(0, OpP::BvBinPred(BvBinPred::Sge), BV, All(Bits), bv_sge),
+            Rule::new(0, OpP::BvBinPred(BvBinPred::Sgt), BV, All(Bits), bv_sgt),
+            Rule::new(0, OpP::BvBinPred(BvBinPred::Sle), BV, All(Bits), bv_sle),
+            Rule::new(0, OpP::BvBinPred(BvBinPred::Slt), BV, All(Bits), bv_slt),
+            Rule::new(0, OpP::BvExtract, BV, All(Bits), bv_extract),
+            Rule::new(0, OpP::BvConcat, BV, All(Bits), bv_concat),
+            Rule::new(0, OpP::PfToBv, BV, All(Field), pf_to_bv),
+            Rule::new(0, OpP::PfNaryOp(PfNaryOp::Add), Ff, All(Field), pf_add),
+            Rule::new(0, OpP::PfNaryOp(PfNaryOp::Mul), Ff, All(Field), pf_mul),
+            Rule::new(0, OpP::PfUnOp(PfUnOp::Neg), Ff, All(Field), pf_neg),
+            Rule::new(0, OpP::Eq, Ff, All(Field), pf_eq),
+            Rule::new(0, OpP::PfUnOp(PfUnOp::Recip), Ff, All(Field), pf_recip),
+            Rule::new(0, OpP::UbvToPf, Ff, All(Uint), ubv_to_pf),
+            Rule::new(0, OpP::Const, Ff, All(Field), pf_const),
+            Rule::new(0, OpP::Ite, Ff, Seq(vec![Bit, Field, Field]), pf_ite),
+        ]
+    }
+
+    /// Our encoding choice function
+    fn choose(t: &Term, encs: &[&BTreeSet<Ty>]) -> usize {
+        match &t.op {
+            Op::BvUext(_) => {
+                if encs[0].contains(&Ty::Bits) {
+                    1
+                } else {
+                    0
+                }
+            }
+            o => panic!("Cannot choose for op {}", o),
+        }
+    }
 }
 
 fn bool_neg(t: Term) -> Term {
@@ -870,83 +949,4 @@ fn bv_lshr(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
             .rev()
             .collect(),
     )
-}
-
-/// The boolean/bv -> field rewrite rules.
-pub fn rules() -> Vec<Rule<Enc>> {
-    use EncTypes::*;
-    use OpPat as OpP;
-    use SortPat::{BitVector as BV, Bool, Field as Ff};
-    use Ty::*;
-    vec![
-        Rule::new(0, OpP::Const, Bool, All(Bit), bool_const),
-        Rule::new(0, OpP::Eq, Bool, All(Bit), bool_eq),
-        Rule::new(0, OpP::Ite, Bool, All(Bit), bool_ite),
-        Rule::new(0, OpP::Not, Bool, All(Bit), not),
-        Rule::new(0, OpP::BoolMaj, Bool, All(Bit), maj),
-        Rule::new(0, OpP::Implies, Bool, All(Bit), implies),
-        Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Xor), Bool, All(Bit), xor),
-        Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Or), Bool, All(Bit), or),
-        Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::And), Bool, All(Bit), and),
-        Rule::new(0, OpP::Const, BV, All(Bit), bv_const),
-        Rule::new(0, OpP::BvBit, BV, All(Bits), bv_bit),
-        Rule::new(0, OpP::Ite, BV, Seq(vec![Bit, Uint, Uint]), bv_ite),
-        Rule::new(0, OpP::BvUnOp(BvUnOp::Not), BV, All(Bits), bv_not),
-        Rule::new(0, OpP::BvUnOp(BvUnOp::Neg), BV, All(Uint), bv_neg),
-        Rule::new(0, OpP::Eq, BV, All(Uint), bv_eq),
-        Rule::new(0, OpP::BvUext, BV, All(Bits), bv_uext_bits),
-        Rule::new(1, OpP::BvUext, BV, All(Uint), bv_uext_uint),
-        Rule::new(0, OpP::BvSext, BV, All(Bits), bv_sext),
-        Rule::new(0, OpP::BoolToBv, BV, All(Bit), bool_to_bv),
-        Rule::new(0, OpP::BvNaryOp(BvNaryOp::And), BV, All(Bits), bv_and),
-        Rule::new(0, OpP::BvNaryOp(BvNaryOp::Or), BV, All(Bits), bv_or),
-        Rule::new(0, OpP::BvNaryOp(BvNaryOp::Xor), BV, All(Bits), bv_xor),
-        Rule::new(0, OpP::BvNaryOp(BvNaryOp::Add), BV, All(Uint), bv_add),
-        Rule::new(0, OpP::BvNaryOp(BvNaryOp::Mul), BV, All(Uint), bv_mul),
-        Rule::new(0, OpP::BvBinOp(BvBinOp::Sub), BV, All(Uint), bv_sub),
-        Rule::new(0, OpP::BvBinOp(BvBinOp::Udiv), BV, All(Uint), bv_udiv),
-        Rule::new(0, OpP::BvBinOp(BvBinOp::Urem), BV, All(Uint), bv_urem),
-        Rule::new(
-            0,
-            OpP::BvBinOp(BvBinOp::Shl),
-            BV,
-            Seq(vec![Uint, Bits]),
-            bv_shl,
-        ),
-        Rule::new(0, OpP::BvBinOp(BvBinOp::Ashr), BV, All(Bits), bv_ashr),
-        Rule::new(0, OpP::BvBinOp(BvBinOp::Lshr), BV, All(Bits), bv_lshr),
-        Rule::new(0, OpP::BvBinPred(BvBinPred::Uge), BV, All(Uint), bv_uge),
-        Rule::new(0, OpP::BvBinPred(BvBinPred::Ugt), BV, All(Uint), bv_ugt),
-        Rule::new(0, OpP::BvBinPred(BvBinPred::Ule), BV, All(Uint), bv_ule),
-        Rule::new(0, OpP::BvBinPred(BvBinPred::Ult), BV, All(Uint), bv_ult),
-        Rule::new(0, OpP::BvBinPred(BvBinPred::Sge), BV, All(Bits), bv_sge),
-        Rule::new(0, OpP::BvBinPred(BvBinPred::Sgt), BV, All(Bits), bv_sgt),
-        Rule::new(0, OpP::BvBinPred(BvBinPred::Sle), BV, All(Bits), bv_sle),
-        Rule::new(0, OpP::BvBinPred(BvBinPred::Slt), BV, All(Bits), bv_slt),
-        Rule::new(0, OpP::BvExtract, BV, All(Bits), bv_extract),
-        Rule::new(0, OpP::BvConcat, BV, All(Bits), bv_concat),
-        Rule::new(0, OpP::PfToBv, BV, All(Field), pf_to_bv),
-        Rule::new(0, OpP::PfNaryOp(PfNaryOp::Add), Ff, All(Field), pf_add),
-        Rule::new(0, OpP::PfNaryOp(PfNaryOp::Mul), Ff, All(Field), pf_mul),
-        Rule::new(0, OpP::PfUnOp(PfUnOp::Neg), Ff, All(Field), pf_neg),
-        Rule::new(0, OpP::Eq, Ff, All(Field), pf_eq),
-        Rule::new(0, OpP::PfUnOp(PfUnOp::Recip), Ff, All(Field), pf_recip),
-        Rule::new(0, OpP::UbvToPf, Ff, All(Uint), ubv_to_pf),
-        Rule::new(0, OpP::Const, Ff, All(Field), pf_const),
-        Rule::new(0, OpP::Ite, Ff, Seq(vec![Bit, Field, Field]), pf_ite),
-    ]
-}
-
-/// Our encoding choice function
-pub fn choose(t: &Term, encs: &[&BTreeSet<Ty>]) -> usize {
-    match &t.op {
-        Op::BvUext(_) => {
-            if encs[0].contains(&Ty::Bits) {
-                1
-            } else {
-                0
-            }
-        }
-        o => panic!("Cannot choose for op {}", o),
-    }
 }

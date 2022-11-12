@@ -11,24 +11,19 @@ pub mod ver;
 
 /// Lower
 pub fn apply(field: &FieldT, computation: Computation) -> Computation {
-    runtime::apply_rules(
-        rules::rules(),
-        Box::new(rules::choose),
-        field.clone(),
-        computation,
-    )
+    runtime::apply_rules::<rules::Enc>(field.clone(), computation)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::ir::proof::Constraints;
+    use crate::ir::term::dist::test::ArbitraryTermEnv;
     use crate::ir::term::*;
     use crate::target::r1cs::trans::test::PureBool;
-    use crate::ir::term::dist::test::ArbitraryTermEnv;
     use crate::util::field::DFL_T;
-    use rug::Integer;
     use quickcheck_macros::quickcheck;
+    use rug::Integer;
 
     #[test]
     fn simple() {
@@ -99,13 +94,17 @@ mod test {
     fn const_test(b: &str) {
         let _ = env_logger::builder().is_test(true).try_init();
         let cs = text::parse_computation(
-           format!("
+            format!(
+                "
             (computation
                 (metadata () () ())
                 (precompute () () (#t))
                 {}
             )
-        ", b).as_bytes(),
+        ",
+                b
+            )
+            .as_bytes(),
         );
         let values = text::parse_value_map(
             b"
@@ -167,7 +166,9 @@ mod test {
         let w = 2;
         for l in 0..(1 << w) {
             for r in 0..(1 << w) {
-                for o in &[BV_UGE, BV_UGT, BV_ULE, BV_ULT, BV_SGE, BV_SGT, BV_SLE, BV_SLT] {
+                for o in &[
+                    BV_UGE, BV_UGT, BV_ULE, BV_ULT, BV_SGE, BV_SGT, BV_SLE, BV_SLT,
+                ] {
                     let t = term![o.clone(); bv_lit(l, w), bv_lit(r, w)];
                     let output = eval(&t, &Default::default()).as_bool();
                     let tt = if output { t } else { term![NOT; t] };
