@@ -388,7 +388,7 @@ impl<'a, Br: ::std::io::BufRead> ModelParser<String, Sort, Value, &'a mut SmtPar
 /// Preprocess the term for SMT emission.
 ///
 /// Changes:
-/// * replace FF reciprocal with a skolem that floats if the input is 0
+/// * encode ff reciprocal
 /// * replace PfToBv with skolems. UB if input is OOB.
 fn preprocess(t: &Term) -> Term {
     let t = fold(t, &[]);
@@ -416,6 +416,10 @@ fn preprocess(t: &Term) -> Term {
             }
             Op::PfToBv(w) => {
                 let field = FieldT::from(check(&n.cs[0]).as_pf());
+                let x = cache.get(&n.cs[0]).unwrap().clone();
+                let p = term(PF_MUL, (0..(1 << *w)).map(|i| term![PF_ADD; x.clone(), pf_lit(field.new_v(-i))]).collect());
+                let z = pf_lit(field.new_v(0));
+                let x_or_zero = term![ITE; term![EQ; p, z.clone()], x, z];
                 let bits: Vec<Term> = (0..*w).map(|_| fresh(Sort::Bool)).collect();
                 let scale_sum: Term = term(
                     PF_ADD,
@@ -427,7 +431,7 @@ fn preprocess(t: &Term) -> Term {
                         })
                         .collect(),
                 );
-                assertions.push(term![EQ; scale_sum, cache.get(&n.cs[0]).unwrap().clone()]);
+                assertions.push(term![EQ; scale_sum, x_or_zero]);
                 term(
                     BV_CONCAT,
                     bits.into_iter()

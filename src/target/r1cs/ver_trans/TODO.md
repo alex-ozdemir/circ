@@ -64,3 +64,9 @@ Bugs found:
   * the obvious way to recover completeness (remove assertion) was unsound
     * it mod'd the shift amount rather than saturating it.
   * now: SMT-LIB compliant
+* bv cmp
+  * based on an unsound (in the original implementation) XOR incomplete (in
+    our port) 'fits in bits' check.
+  * fixed now.
+* bv{udiv,urem}
+  * differed from SMT standard

@@ -26,6 +26,7 @@ mod test {
     use crate::ir::term::*;
     use crate::target::r1cs::trans::test::PureBool;
     use crate::util::field::DFL_T;
+    use rug::Integer;
     use quickcheck_macros::quickcheck;
 
     #[test]
@@ -39,6 +40,7 @@ mod test {
                     ((a bool) (b bool) (c bool))
                     ((a P) (b P))
                 )
+                (precompute () () (#t))
                 (= (xor a b) c)
             )
         ",
@@ -69,6 +71,7 @@ mod test {
                     ((a bool) (b0 bool) (b1 bool) (b2 bool) (c bool) (d bool))
                     ((a P) (b P))
                 )
+                (precompute () () (#t))
                 (= (xor a (and b0 b1 b2)) (=> c (or (not d) (not d))))
             )
         ",
@@ -98,6 +101,7 @@ mod test {
            format!("
             (computation
                 (metadata () () ())
+                (precompute () () (#t))
                 {}
             )
         ", b).as_bytes(),
@@ -158,8 +162,81 @@ mod test {
     }
 
     #[test]
+    fn bv_cmp() {
+        let w = 2;
+        for l in 0..(1 << w) {
+            for r in 0..(1 << w) {
+                for o in &[BV_UGE, BV_UGT, BV_ULE, BV_ULT, BV_SGE, BV_SGT, BV_SLE, BV_SLT] {
+                    let t = term![o.clone(); bv_lit(l, w), bv_lit(r, w)];
+                    let output = eval(&t, &Default::default()).as_bool();
+                    let tt = if output { t } else { term![NOT; t] };
+                    let s = format!("{}", tt);
+                    const_test(&s);
+                }
+                for o in &[BV_UREM, BV_UDIV, BV_SUB] {
+                    let t = term![o.clone(); bv_lit(l, w), bv_lit(r, w)];
+                    let output = eval(&t, &Default::default());
+                    let tt = term![EQ; leaf_term(Op::Const(output)), t];
+                    let s = format!("{}", tt);
+                    const_test(&s);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bv_udiv_zero() {
+        const_test("((bit 0) (bvudiv #b001 #b000))")
+    }
+
+    #[test]
     fn bv_neg() {
         const_test("(not ((bit 0) (bvneg #b000)))");
         const_test("(not ((bit 0) (bvneg #b010)))");
+    }
+
+    #[test]
+    fn complex() {
+        let _ = env_logger::builder().is_test(true).try_init();
+        let cs = text::parse_computation(
+            b"
+            (computation
+                (metadata
+                    (P V)
+                    ((a bool) (b bool) (c bool) (d (bv 4)) (e (mod 17)) (f (bv 5)))
+                    ((a P) (b P))
+                )
+                (precompute () () (#t))
+                (and
+                  a
+                  (not (xor a b))
+                  (= a (not c))
+                  (= a (not ((bit 0) d)))
+                  (= a (not ((bit 0) (bvadd d d))))
+                  (= a (not ((bit 0) (bvmul d d))))
+                  (= a ((bit 0) (bvudiv #b0 #b0)))
+                  ; (= a ((bit 0) (bvudiv d d)))
+                  (= (* e e) e)
+                  (= d ((extract 4 1) f))
+                )
+            )
+        ",
+        );
+        let values = text::parse_value_map(
+            b"
+        (let (
+          (a true)
+          (b true)
+          (c false)
+          (d #b0000)
+          (e #f1m17)
+          (f #b00001)
+          ) true ; dead
+        )
+        ",
+        );
+        assert_eq!(vec![Value::Bool(true)], cs.eval(&values));
+        let cs2 = apply(&FieldT::from(Integer::from(17)), cs);
+        assert_eq!(vec![Value::Bool(true)], cs2.eval(&values));
     }
 }

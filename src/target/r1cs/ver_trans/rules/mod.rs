@@ -1,6 +1,6 @@
 //! Rules for lowering booleans and bit-vectors to a field
 
-use super::lang::{EncTypes, Encoding, EncodingType, OpPat, Ctx, Rule, SortPat};
+use super::lang::{Ctx, EncTypes, Encoding, EncodingType, OpPat, Rule, SortPat};
 use crate::ir::term::*;
 use crate::target::bitsize;
 
@@ -204,7 +204,7 @@ impl Encoding for Enc {
 
 fn bool_neg(t: Term) -> Term {
     if let Sort::Field(f) = check(&t) {
-        term![PF_ADD; pf_lit(f.new_v(1)), term![PF_NEG; t]]
+        pf_sub(pf_lit(f.new_v(1)), t)
     } else {
         panic!()
     }
@@ -229,8 +229,7 @@ fn is_zero(ctx: &mut Ctx, x: Term) -> Term {
 }
 
 fn ensure_bit(ctx: &mut Ctx, b: Term) {
-    let b_minus_one = term![PF_ADD; b.clone(), term![PF_NEG; ctx.one().clone()]];
-    ctx.assert(term![EQ; term![PF_MUL; b_minus_one, b], ctx.zero().clone()]);
+    ctx.assert(term![EQ; term![PF_MUL; sub_one(b.clone()), b], ctx.zero().clone()]);
 }
 
 fn bit_split(ctx: &mut Ctx, reason: &str, x: Term, n: usize) -> Vec<Term> {
@@ -268,7 +267,6 @@ fn bit_join(f: &FieldT, bits: impl Iterator<Item = Term>) -> Term {
     term(PF_ADD, summands)
 }
 
-#[allow(dead_code)]
 fn sign_bit_join(f: &FieldT, bits: &[Term]) -> Term {
     let mut s = Integer::from(1);
     let summands: Vec<Term> = bits
@@ -279,7 +277,7 @@ fn sign_bit_join(f: &FieldT, bits: &[Term]) -> Term {
             s <<= 1;
             t
         })
-        .chain(std::iter::once(term![PF_MUL; pf_lit(f.new_v(&-(Integer::from(1) << bits.len()))), bits.last().unwrap().clone()]))
+        .chain(std::iter::once(term![PF_MUL; pf_lit(f.new_v(&-(Integer::from(1) << (bits.len()-1)))), bits.last().unwrap().clone()]))
         .collect();
     term(PF_ADD, summands)
 }
@@ -370,7 +368,7 @@ fn implies(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 }
 
 fn ite(c: Term, t: Term, f: Term) -> Term {
-    term![PF_ADD; term![PF_MUL; c, term![PF_ADD; t, term![PF_NEG; f.clone()]]], f]
+    term![PF_ADD; term![PF_MUL; c, pf_sub(t, f.clone())], f]
 }
 
 fn bool_ite(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
@@ -443,15 +441,12 @@ fn bv_neg(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let (x, w) = args[0].uint();
     let field = FieldT::from(check(&x).as_pf());
     let zero = is_zero(ctx, x.clone());
-    let diff = term![PF_ADD; pf_lit(field.new_v(Integer::from(1) << w)), term![PF_NEG; x]];
+    let diff = pf_sub(pf_lit(field.new_v(Integer::from(1) << w)), x);
     Enc::Uint(ite(zero, pf_lit(field.new_v(0)), diff), w)
 }
 
 fn bv_eq(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(is_zero(
-        ctx,
-        term![PF_ADD; args[0].uint().0, term![PF_NEG; args[1].uint().0]],
-    ))
+    Enc::Bit(is_zero(ctx, pf_sub(args[0].uint().0, args[1].uint().0)))
 }
 
 fn bv_uext_bits(ctx: &mut Ctx, op: &Op, args: &[&Enc]) -> Enc {
@@ -582,6 +577,14 @@ fn pf_const(ctx: &mut Ctx, op: &Op, _args: &[&Enc]) -> Enc {
     }
 }
 
+fn pf_sub(a: Term, b: Term) -> Term {
+    term![PF_ADD; a, term![PF_NEG; b]]
+}
+
+fn pf_eq(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
+    Enc::Bit(is_zero(ctx, pf_sub(args[0].field(), args[1].field())))
+}
+
 fn bv_add(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let w = args[0].w();
     let extra_width = bitsize(args.len().saturating_sub(1));
@@ -648,14 +651,13 @@ fn bv_sub(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(bits)
 }
 
-fn fits_in_bits(ctx: &mut Ctx, reason: &str, x: Term, n: usize) -> Term {
-    let bits = bit_split(ctx, &format!("{}_fit", reason), x.clone(), n);
-    let sum = bit_join(ctx.field(), bits.into_iter());
-    is_zero(ctx, term![PF_ADD; sum, term![PF_NEG; x]])
-}
-
-fn bv_ge(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> Term {
-    fits_in_bits(ctx, "ge", term![PF_ADD; a, term![PF_NEG; b]], n)
+/// Given a and b such that -2^n < a - b < 2^n, returns whether a >= b (or a > b if `strict` is
+/// set).
+fn bv_cmp(ctx: &mut Ctx, a: Term, b: Term, n: usize, strict: bool) -> Term {
+    let tweak = ctx.f_const(if strict { -1 } else { 0 });
+    let shift = ctx.f_const(Integer::from(1) << n);
+    let sum = term![PF_ADD; shift, tweak, a, term![PF_NEG; b]];
+    bit_split(ctx, "cmp", sum, n + 1).pop().unwrap()
 }
 
 fn sub_one(x: Term) -> Term {
@@ -664,64 +666,82 @@ fn sub_one(x: Term) -> Term {
 }
 
 fn bv_uge(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(bv_ge(ctx, args[0].uint().0, args[1].uint().0, args[0].w()))
+    Enc::Bit(bv_cmp(
+        ctx,
+        args[0].uint().0,
+        args[1].uint().0,
+        args[0].w(),
+        false,
+    ))
 }
 
 fn bv_ugt(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(bv_ge(
+    Enc::Bit(bv_cmp(
         ctx,
-        sub_one(args[0].uint().0),
+        args[0].uint().0,
         args[1].uint().0,
         args[0].w(),
+        true,
     ))
 }
 
 fn bv_ule(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(bv_ge(ctx, args[1].uint().0, args[0].uint().0, args[0].w()))
+    Enc::Bit(bv_cmp(
+        ctx,
+        args[1].uint().0,
+        args[0].uint().0,
+        args[0].w(),
+        false,
+    ))
 }
 
 fn bv_ult(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(bv_ge(
+    Enc::Bit(bv_cmp(
         ctx,
-        sub_one(sign_bit_join(ctx.field(), args[1].bits())),
-        sign_bit_join(ctx.field(), args[0].bits()),
+        args[1].uint().0,
+        args[0].uint().0,
         args[0].w(),
+        true,
     ))
 }
 
 fn bv_sge(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(bv_ge(
+    Enc::Bit(bv_cmp(
         ctx,
         sign_bit_join(ctx.field(), args[0].bits()),
         sign_bit_join(ctx.field(), args[1].bits()),
-        args[0].bits().len(),
+        args[0].w(),
+        false,
     ))
 }
 
 fn bv_sgt(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(bv_ge(
+    Enc::Bit(bv_cmp(
         ctx,
-        sub_one(sign_bit_join(ctx.field(), args[0].bits())),
+        sign_bit_join(ctx.field(), args[0].bits()),
         sign_bit_join(ctx.field(), args[1].bits()),
-        args[0].bits().len(),
+        args[0].w(),
+        true,
     ))
 }
 
 fn bv_sle(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(bv_ge(
+    Enc::Bit(bv_cmp(
         ctx,
         sign_bit_join(ctx.field(), args[1].bits()),
         sign_bit_join(ctx.field(), args[0].bits()),
-        args[0].bits().len(),
+        args[0].w(),
+        false,
     ))
 }
 
 fn bv_slt(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    Enc::Bit(bv_ge(
+    Enc::Bit(bv_cmp(
         ctx,
-        sub_one(sign_bit_join(ctx.field(), args[1].bits())),
+        sign_bit_join(ctx.field(), args[1].bits()),
         sign_bit_join(ctx.field(), args[0].bits()),
-        args[0].bits().len(),
+        args[0].w(),
+        true,
     ))
 }
 
@@ -730,7 +750,7 @@ fn bv_slt(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 //
 // if b = 0, TODO
 fn ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
-    let is_zero = is_zero(ctx, b.clone());
+    let b_is_zero = is_zero(ctx, b.clone());
     let a_bv_term = term![Op::PfToBv(n); a.clone()];
     let b_bv_term = term![Op::PfToBv(n); b.clone()];
     let q_term = term![Op::UbvToPf(ctx.field().clone()); term![BV_UDIV; a_bv_term.clone(), b_bv_term.clone()]];
@@ -739,17 +759,14 @@ fn ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
     let r = ctx.fresh("div_r", r_term);
     let qb = bit_split(ctx, "div_q", q.clone(), n);
     let rb = bit_split(ctx, "div_r", r.clone(), n);
-    ctx.assert(term![EQ; term![PF_MUL; q.clone(), b.clone()],
-    term![PF_ADD; a, term![PF_NEG; r.clone()]]]);
-    let is_gt = bv_ge(
-        ctx,
-        term![PF_ADD; b, term![PF_NEG; ctx.one().clone()]],
-        r,
-        n,
-    );
-    let is_not_ge = bool_neg(is_gt);
-    let is_not_zero = bool_neg(is_zero);
-    ctx.assert(term![EQ; term![PF_MUL; is_not_ge, is_not_zero], ctx.zero().clone()]);
+    // qb = a - r
+    ctx.assert(term![EQ; term![PF_MUL; q.clone(), b.clone()], pf_sub(a, r.clone())]);
+    // b = 0 -> q = MAX   :   b != 0 OR q = MAX   :  NOT (b = 0 AND q != MAX)
+    // b != 0 -> r < b    :   b = 0  OR r < b     :  NOT (b != 0 AND r >= b)
+    let q_is_max = is_zero(ctx, pf_sub(q, ctx.f_const((Integer::from(1) << n) - 1)));
+    let r_ge_b = bv_cmp(ctx, r, b, n, false);
+    ctx.assert(term![EQ; term![PF_MUL; b_is_zero.clone(), bool_neg(q_is_max)], ctx.zero().clone()]);
+    ctx.assert(term![EQ; term![PF_MUL; bool_neg(b_is_zero), r_ge_b], ctx.zero().clone()]);
     (qb, rb)
 }
 
@@ -808,11 +825,7 @@ fn shift_bv_bits(
 /// bits. The number of low bits, `b`, is the minimum amount such that `data_w-1` is representable
 /// in `b` bits. The rest of the bits (the high ones) are or'd together into a single bit that is
 /// returned.
-fn split_shift_amt(
-    ctx: &mut Ctx,
-    data_w: usize,
-    mut shift_amt: Vec<Term>,
-) -> (Term, Vec<Term>) {
+fn split_shift_amt(ctx: &mut Ctx, data_w: usize, mut shift_amt: Vec<Term>) -> (Term, Vec<Term>) {
     let b = bitsize(data_w - 1);
     let some_high_bit = or_helper(ctx, shift_amt.drain(b..).collect());
     (some_high_bit, shift_amt)
@@ -852,17 +865,10 @@ fn bv_lshr(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     let (high, low) = split_shift_amt(ctx, args[1].w(), args[1].bits().to_owned());
     let rev_data = bit_join(ctx.field(), args[0].bits().into_iter().rev().cloned());
     Enc::Bits(
-        shift_bv_bits(
-            ctx,
-            rev_data,
-            low,
-            None,
-            args[0].w(),
-            high,
-        )
-        .into_iter()
-        .rev()
-        .collect(),
+        shift_bv_bits(ctx, rev_data, low, None, args[0].w(), high)
+            .into_iter()
+            .rev()
+            .collect(),
     )
 }
 
@@ -923,6 +929,7 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Add), Ff, All(Field), pf_add),
         Rule::new(0, OpP::PfNaryOp(PfNaryOp::Mul), Ff, All(Field), pf_mul),
         Rule::new(0, OpP::PfUnOp(PfUnOp::Neg), Ff, All(Field), pf_neg),
+        Rule::new(0, OpP::Eq, Ff, All(Field), pf_eq),
         Rule::new(0, OpP::PfUnOp(PfUnOp::Recip), Ff, All(Field), pf_recip),
         // TODO: timeout
         // Rule::new(0, OpP::UbvToPf, Ff, All(Uint), ubv_to_pf),

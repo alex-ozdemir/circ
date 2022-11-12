@@ -1592,9 +1592,7 @@ fn eval_value(vs: &mut TermMap<Value>, h: &FxHashMap<String, Value>, c: Term) ->
         Op::PfToBv(w) => Value::BitVector({
             let i = vs.get(&c.cs[0]).unwrap().as_pf().i();
             let m = Integer::from(1) << *w as u32;
-            let i = i.div_rem_floor(m.clone()).1;
-            assert!(i < m);
-            BitVector::new(i, *w)
+            BitVector::new(if i < m { i } else { Integer::from(0) }, *w)
         }),
         Op::BvUext(w) => Value::BitVector({
             let a = vs.get(&c.cs[0]).unwrap().as_bv().clone();

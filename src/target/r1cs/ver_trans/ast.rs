@@ -122,6 +122,7 @@ impl<'a> From<&'a Term> for Pattern {
             Op::Ite => &t.cs[1],
             Op::Eq => &t.cs[0],
             Op::BvBit(_) => &t.cs[0],
+            Op::BvBinPred(_) => &t.cs[0],
             _ => t,
         };
         Pattern(

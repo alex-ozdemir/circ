@@ -1,6 +1,6 @@
 use circ::ir::term::text::*;
 use circ::target::r1cs::ver_trans::{
-    lang::{OpPattern, SortPat},
+    lang::{OpPat, SortPat},
     rules::{rules, Enc},
     ver::{
         c_completeness_terms, c_soundness_terms, completeness_terms, soundness_terms,
@@ -64,29 +64,29 @@ impl Prop {
     }
 }
 
-fn op_pat_string(o: &OpPattern) -> String {
+fn op_pat_string(o: &OpPat) -> String {
     match o {
-        OpPattern::Const => format!("const"),
-        OpPattern::Eq => format!("="),
-        OpPattern::Ite => format!("ite"),
-        OpPattern::Not => format!("not"),
-        OpPattern::Implies => format!("=>"),
-        OpPattern::BoolMaj => format!("maj"),
-        OpPattern::BoolNaryOp(o) => format!("{}", o),
-        OpPattern::PfNaryOp(o) => format!("{}", o),
-        OpPattern::PfUnOp(o) => format!("{}", o),
-        OpPattern::BvBit => format!("bit"),
-        OpPattern::BvBinOp(o) => format!("{}", o),
-        OpPattern::BvBinPred(o) => format!("{}", o),
-        OpPattern::BvNaryOp(o) => format!("{}", o),
-        OpPattern::BvUnOp(o) => format!("{}", o),
-        OpPattern::BoolToBv => format!("bool2bv"),
-        OpPattern::BvExtract => format!("bvextract"),
-        OpPattern::BvConcat => format!("bvconcat"),
-        OpPattern::BvUext => format!("bvuext"),
-        OpPattern::BvSext => format!("bvsext"),
-        OpPattern::PfToBv => format!("pf2bv"),
-        OpPattern::UbvToPf => format!("ubv2pf"),
+        OpPat::Const => format!("const"),
+        OpPat::Eq => format!("="),
+        OpPat::Ite => format!("ite"),
+        OpPat::Not => format!("not"),
+        OpPat::Implies => format!("=>"),
+        OpPat::BoolMaj => format!("maj"),
+        OpPat::BoolNaryOp(o) => format!("{}", o),
+        OpPat::PfNaryOp(o) => format!("{}", o),
+        OpPat::PfUnOp(o) => format!("{}", o),
+        OpPat::BvBit => format!("bit"),
+        OpPat::BvBinOp(o) => format!("{}", o),
+        OpPat::BvBinPred(o) => format!("{}", o),
+        OpPat::BvNaryOp(o) => format!("{}", o),
+        OpPat::BvUnOp(o) => format!("{}", o),
+        OpPat::BoolToBv => format!("bool2bv"),
+        OpPat::BvExtract => format!("bvextract"),
+        OpPat::BvConcat => format!("bvconcat"),
+        OpPat::BvUext => format!("bvuext"),
+        OpPat::BvSext => format!("bvsext"),
+        OpPat::PfToBv => format!("pf2bv"),
+        OpPat::UbvToPf => format!("ubv2pf"),
     }
 }
 
