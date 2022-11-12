@@ -748,7 +748,7 @@ fn bv_slt(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 // returns the bits of q and r such that a = qb + r
 // with 0 <= r < b
 //
-// if b = 0, TODO
+// if b = 0, r = a, q = MAX
 fn ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
     let b_is_zero = is_zero(ctx, b.clone());
     let a_bv_term = term![Op::PfToBv(n); a.clone()];
@@ -931,10 +931,8 @@ pub fn rules() -> Vec<Rule<Enc>> {
         Rule::new(0, OpP::PfUnOp(PfUnOp::Neg), Ff, All(Field), pf_neg),
         Rule::new(0, OpP::Eq, Ff, All(Field), pf_eq),
         Rule::new(0, OpP::PfUnOp(PfUnOp::Recip), Ff, All(Field), pf_recip),
-        // TODO: timeout
-        // Rule::new(0, OpP::UbvToPf, Ff, All(Uint), ubv_to_pf),
-        // TODO: timeout
-        // Rule::new(0, OpP::Const, Ff, All(Field), pf_const),
+        Rule::new(0, OpP::UbvToPf, Ff, All(Uint), ubv_to_pf),
+        Rule::new(0, OpP::Const, Ff, All(Field), pf_const),
         Rule::new(0, OpP::Ite, Ff, Seq(vec![Bit, Field, Field]), pf_ite),
     ]
 }

@@ -1,11 +1,12 @@
 To do:
 * ff: const (timeout)
-* ff: ubv2pf (timeout)
+* bv: pf2bv (incomplete)
 * secret/public variables
 * field flatten
 * better Pf2Bv in SMT BE
 
 Done:
+* ff: ubv2pf
 * bv: shl
 * bv: ashr
 * bv: lshr
@@ -22,7 +23,6 @@ Done:
 * ff: mul
 * ff: neg
 * ff: recip (incomplete)
-* bv: pf2bv
 * bv: and
 * bv: or
 * bv: xor
