@@ -215,7 +215,7 @@ mod test {
                   (= a (not ((bit 0) (bvadd d d))))
                   (= a (not ((bit 0) (bvmul d d))))
                   (= a ((bit 0) (bvudiv #b0 #b0)))
-                  ; (= a ((bit 0) (bvudiv d d)))
+                  (= a ((bit 0) (bvudiv d d)))
                   (= (* e e) e)
                   (= d ((extract 4 1) f))
                 )
