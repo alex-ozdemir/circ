@@ -243,7 +243,7 @@ where
 {
     let (pk, prover_data) = read_prover_key_and_data::<_, E>(pk_path)?;
     let rng = &mut rand::thread_rng();
-    for (input, sort) in &prover_data.precompute_inputs {
+    for (input, sort) in prover_data.precompute.inputs() {
         let value = inputs_map
             .get(input)
             .unwrap_or_else(|| panic!("No input for {}", input));

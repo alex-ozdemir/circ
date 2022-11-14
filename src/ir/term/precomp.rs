@@ -71,6 +71,7 @@ impl PreComp {
             }
             !drop
         });
+        self.recompute_inputs();
     }
 
     /// Evaluate the precomputation.
@@ -105,7 +106,9 @@ impl PreComp {
         let mut inputs = FxHashSet::default();
         for t in PostOrderIter::new(self.tuple()) {
             if let Op::Var(name, sort) = &t.op {
-                inputs.insert((name.clone(), sort.clone()));
+                if !self.outputs.contains_key(name) {
+                    inputs.insert((name.clone(), sort.clone()));
+                }
             }
         }
         self.inputs = inputs;

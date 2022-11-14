@@ -408,18 +408,7 @@ impl R1cs<String> {
             .filter(|i| self.public_idxs.contains(i))
             .map(|i| self.idxs_signals.get(&i).cloned().unwrap())
             .collect();
-        let mut precompute_inputs = HashMap::default();
-        for input in &pf_input_order {
-            if let Some(output_term) = precompute.outputs().get(input) {
-                for (v, s) in extras::free_variables_with_sorts(output_term.clone()) {
-                    precompute_inputs.insert(v, s);
-                }
-            } else {
-                precompute_inputs.insert(input.clone(), Sort::Field(self.modulus.clone()));
-            }
-        }
         VerifierData {
-            precompute_inputs,
             precompute,
             pf_input_order,
         }
@@ -434,25 +423,7 @@ impl R1cs<String> {
         use crate::ir::proof::PROVER_ID;
         let all_inputs = cs.metadata.get_inputs_for_party(Some(PROVER_ID));
         precompute.restrict_to_inputs(all_inputs);
-        let pf_input_order: Vec<String> = (0..self.next_idx)
-            .filter(|i| self.public_idxs.contains(i))
-            .map(|i| self.idxs_signals.get(&i).cloned().unwrap())
-            .collect();
-        let mut precompute_inputs = HashMap::default();
-        for input in &pf_input_order {
-            if let Some(output_term) = precompute.outputs().get(input) {
-                for (v, s) in extras::free_variables_with_sorts(output_term.clone()) {
-                    precompute_inputs.insert(v, s);
-                }
-            } else {
-                precompute_inputs.insert(input.clone(), Sort::Field(self.modulus.clone()));
-            }
-        }
-        for o in precompute.outputs().keys() {
-            precompute_inputs.remove(o);
-        }
         ProverData {
-            precompute_inputs,
             precompute,
             r1cs: self.clone(),
         }
@@ -475,8 +446,6 @@ impl R1cs<String> {
 /// Relation-related data that a verifier needs to check a proof.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifierData {
-    /// Inputs that the verifier must have
-    pub precompute_inputs: HashMap<String, Sort>,
     /// A precomputation to perform on those inputs
     pub precompute: precomp::PreComp,
     /// The order in which the outputs must be fed into the proof system
@@ -486,7 +455,7 @@ pub struct VerifierData {
 impl VerifierData {
     /// Given verifier inputs, compute a vector of integers to feed to the proof system.
     pub fn eval(&self, value_map: &HashMap<String, Value>) -> Vec<rug::Integer> {
-        for (input, sort) in &self.precompute_inputs {
+        for (input, sort) in self.precompute.inputs() {
             let value = value_map
                 .get(input)
                 .unwrap_or_else(|| panic!("No input for {}", input));
@@ -516,8 +485,6 @@ impl VerifierData {
 pub struct ProverData {
     /// The R1CS instance.
     pub r1cs: R1cs<String>,
-    /// Inputs that the verifier must have
-    pub precompute_inputs: HashMap<String, Sort>,
     /// A precomputation to perform on those inputs
     pub precompute: precomp::PreComp,
 }

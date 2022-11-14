@@ -188,7 +188,7 @@ fn eval_inputs(
     inputs_map: &HashMap<String, Value>,
     prover_data: &ProverData,
 ) -> HashMap<String, Value> {
-    for (input, sort) in &prover_data.precompute_inputs {
+    for (input, sort) in prover_data.precompute.inputs() {
         let value = inputs_map
             .get(input)
             .unwrap_or_else(|| panic!("No input for {}", input));
