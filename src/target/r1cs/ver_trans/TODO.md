@@ -1,11 +1,16 @@
 To do:
+* tag-based VC filtering?
+* brute-force completeness conditions? SMT gets rekt by pf2bv
+* fix bugs in old pipeline
+* options system
+* comparative evaluation
 * ff: const (timeout)
 * bv: pf2bv (incomplete)
 * secret/public variables
-* field flatten
-* better Pf2Bv in SMT BE
 
 Done:
+* field flatten -> R1CS
+* better Pf2Bv in SMT BE
 * ff: ubv2pf
 * bv: shl
 * bv: ashr
