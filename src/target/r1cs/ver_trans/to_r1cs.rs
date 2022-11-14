@@ -1,4 +1,4 @@
-//! Field IR (multiplication and addition only) to R1cs lowering
+//! Field IR (multiplication, addition, and negation only) to R1cs lowering
 
 use crate::ir::term::precomp::PreComp;
 use crate::ir::term::*;
@@ -118,12 +118,6 @@ impl ToR1cs {
 ///
 /// * The R1CS instance
 pub fn to_r1cs(mut cs: Computation, modulus: FieldT) -> (R1cs<String>, ProverData, VerifierData) {
-    cs.precomputes.recompute_inputs();
-    if cs.outputs.len() > 1 {
-        cs.outputs = vec![term(AND, cs.outputs)];
-    }
-    let mut cs = super::apply(&modulus, cs);
-    cs.precomputes.recompute_inputs();
     let metadata = cs.metadata.clone();
     let public_inputs = metadata
         .public_input_names()

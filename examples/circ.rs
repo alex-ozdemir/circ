@@ -32,7 +32,7 @@ use circ::target::r1cs::bellman::gen_params;
 use circ::target::r1cs::opt::reduce_linearities;
 #[cfg(feature = "r1cs")]
 use circ::target::r1cs::spartan::write_data;
-use circ::target::r1cs::ver_trans::to_r1cs::to_r1cs;
+use circ::target::r1cs::ver_trans::to_r1cs;
 #[cfg(feature = "smt")]
 use circ::target::smt::find_model;
 use circ::util::field::DFL_T;

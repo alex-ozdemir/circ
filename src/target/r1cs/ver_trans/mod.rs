@@ -1,18 +1,36 @@
 //! IR -> R1CS
 
 use crate::ir::term::Computation;
+use crate::ir::term::*;
+use crate::target::r1cs::{ProverData, R1cs, VerifierData};
+
 use circ_fields::FieldT;
 
 pub mod ast;
 pub mod lang;
 pub mod rules;
 mod runtime;
-pub mod to_r1cs;
+mod to_r1cs;
 pub mod ver;
 
 /// Lower
 pub fn apply(field: &FieldT, computation: Computation) -> Computation {
     runtime::apply_rules::<rules::Enc>(field.clone(), computation)
+}
+
+/// Convert this (IR) constraint system `cs` to R1CS, over a prime field defined by `modulus`.
+///
+/// ## Returns
+///
+/// * The R1CS instance
+pub fn to_r1cs(mut cs: Computation, modulus: FieldT) -> (R1cs<String>, ProverData, VerifierData) {
+    cs.precomputes.recompute_inputs();
+    if cs.outputs.len() > 1 {
+        cs.outputs = vec![term(AND, cs.outputs)];
+    }
+    let mut cs = apply(&modulus, cs);
+    cs.precomputes.recompute_inputs();
+    to_r1cs::to_r1cs(cs, modulus)
 }
 
 #[cfg(test)]
@@ -258,8 +276,8 @@ mod test {
 
     mod to_r1cs {
 
+        use super::super::to_r1cs;
         use super::*;
-        use super::super::to_r1cs::to_r1cs;
         use crate::util::field::DFL_T;
 
         use crate::ir::proof::Constraints;
