@@ -1235,4 +1235,35 @@ pub mod test {
         let extended_values = precomp.eval(&values);
         r1cs.check_all(&extended_values);
     }
+
+    #[test]
+    fn tuple_var() {
+        let values = text::parse_value_map(
+            b"(let (
+            (a true)
+            (b false)
+            (t (#t false true))
+            ) true)",
+        );
+        let mut cs = text::parse_computation(
+            b"(computation
+                (metadata (P) ((a bool) (b bool) (t (tuple bool bool))) ())
+                (precompute ((a bool) (b bool) (t (tuple bool bool))) () (#t))
+                (declare
+                  ((a bool) (b bool) (t (tuple bool bool)))
+                  (and
+                    ((field 0) (tuple a false))
+                    (and (not b) ((field 1) t))
+                  )
+                )
+            )
+        ",
+        );
+        crate::ir::opt::scalarize_vars::scalarize_inputs(&mut cs);
+        crate::ir::opt::tuple::eliminate_tuples(&mut cs);
+        let (r1cs, pd, _) = to_r1cs(cs, FieldT::from(Integer::from(17)));
+        let precomp = pd.precompute;
+        let extended_values = precomp.eval(&values);
+        r1cs.check_all(&extended_values);
+    }
 }

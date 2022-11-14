@@ -8,6 +8,7 @@ pub mod lang;
 pub mod rules;
 mod runtime;
 pub mod ver;
+pub mod to_r1cs;
 
 /// Lower
 pub fn apply(field: &FieldT, computation: Computation) -> Computation {
@@ -167,7 +168,7 @@ mod test {
         for l in 0..(1 << w) {
             for r in 0..(1 << w) {
                 for o in &[
-                    BV_UGE, BV_UGT, BV_ULE, BV_ULT, BV_SGE, BV_SGT, BV_SLE, BV_SLT,
+                    BV_UGE, BV_UGT, BV_ULE, BV_ULT, BV_SGE, BV_SGT, BV_SLE, BV_SLT, EQ
                 ] {
                     let t = term![o.clone(); bv_lit(l, w), bv_lit(r, w)];
                     let output = eval(&t, &Default::default()).as_bool();

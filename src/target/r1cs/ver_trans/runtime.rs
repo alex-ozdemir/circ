@@ -90,6 +90,8 @@ pub fn apply_rules<E: Encoding>(
     field: FieldT,
     mut computation: Computation,
 ) -> Computation {
+    // we're going to re-add all inputs.
+    computation.metadata.computation_inputs.clear();
     assert!(computation.outputs.len() == 1);
     let mut rewriter = Rewriter::<E>::new();
     let mut ctx = Ctx::new(field.clone());
