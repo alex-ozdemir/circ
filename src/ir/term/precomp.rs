@@ -101,7 +101,7 @@ impl PreComp {
     }
 
     /// Recompute the inputs.
-    fn recompute_inputs(&mut self) {
+    pub fn recompute_inputs(&mut self) {
         let mut inputs = FxHashSet::default();
         for t in PostOrderIter::new(self.tuple()) {
             if let Op::Var(name, sort) = &t.op {
