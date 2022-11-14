@@ -32,7 +32,8 @@ use circ::target::r1cs::bellman::gen_params;
 use circ::target::r1cs::opt::reduce_linearities;
 #[cfg(feature = "r1cs")]
 use circ::target::r1cs::spartan::write_data;
-use circ::target::r1cs::ver_trans::to_r1cs;
+use circ::target::r1cs::trans::to_r1cs;
+use circ::target::r1cs::ver_trans::to_r1cs as ver_to_r1cs;
 #[cfg(feature = "smt")]
 use circ::target::smt::find_model;
 use circ::util::field::DFL_T;
@@ -60,6 +61,11 @@ struct Options {
     /// Number of parties for an MPC.
     #[structopt(long, default_value = "2", name = "PARTIES")]
     parties: u8,
+
+    /// Whether to use the verified R1CS backend
+    #[structopt(long)]
+    #[allow(dead_code)]
+    verified_r1cs_lowering: bool,
 
     #[structopt(subcommand)]
     backend: Backend,
@@ -288,9 +294,12 @@ fn main() {
             lc_elimination_thresh,
             ..
         } => {
-            println!("Converting to r1cs");
-            let (r1cs, mut prover_data, verifier_data) =
-                to_r1cs(cs.get("main").clone(), FieldT::from(DFL_T.modulus()));
+            println!("Converting to r1cs. Verified lowering; {}", options.verified_r1cs_lowering);
+            let (r1cs, mut prover_data, verifier_data) = if options.verified_r1cs_lowering {
+                ver_to_r1cs(cs.get("main").clone(), FieldT::from(DFL_T.modulus()))
+            } else {
+                to_r1cs(cs.get("main").clone(), FieldT::from(DFL_T.modulus()))
+            };
 
             println!("Pre-opt R1cs size: {}", r1cs.constraints().len());
             let r1cs = reduce_linearities(r1cs, Some(lc_elimination_thresh));
