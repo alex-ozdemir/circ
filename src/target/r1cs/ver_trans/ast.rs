@@ -11,8 +11,6 @@ use crate::ir::term::*;
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 /// A pattern for operators
 pub enum OpPat {
-    /// Any constant.
-    Const,
     /// See [Op::Eq].
     Eq,
     /// See [Op::Ite].
@@ -63,7 +61,6 @@ pub enum OpPat {
 impl From<&Op> for OpPat {
     fn from(op: &Op) -> Self {
         match op {
-            Op::Const(..) => OpPat::Const,
             Op::Eq => OpPat::Eq,
             Op::Ite => OpPat::Ite,
             Op::Not => OpPat::Not,

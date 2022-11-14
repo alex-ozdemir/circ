@@ -53,7 +53,6 @@ fn constant_sum_seqs(sum: usize) -> Vec<Vec<usize>> {
 /// Get all operators that would match this [Pattern].
 fn ops(o: &OpPat, s: &Sort, bnd: &Bound) -> Vec<Op> {
     match o {
-        OpPat::Const => s.elems_iter_values().map(Op::Const).collect(),
         OpPat::Eq => vec![Op::Eq],
         OpPat::Ite => vec![Op::Ite],
         OpPat::Not => vec![Op::Not],

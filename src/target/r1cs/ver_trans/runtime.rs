@@ -52,6 +52,14 @@ impl<E: Encoding> Rewriter<E> {
     fn visit(&mut self, c: &mut Ctx, t: Term) {
         let new = if let Op::Var(name, sort) = &t.op {
             E::d_variable(c, name, sort)
+        } else if let Op::Const(_) = &t.op {
+            let t_const = E::d_const_(c.field(), &t);
+            // fold the constant encoding
+            t_const.map(|t| {
+                let c = crate::ir::opt::cfold::fold(&t, &[]);
+                assert!(c.is_const(), "{:?} is not a constant", t);
+                c
+            })
         } else {
             let p = Pattern::from(&t);
             let rules_table = std::mem::take(&mut self.rules);

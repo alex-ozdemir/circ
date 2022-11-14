@@ -68,7 +68,6 @@ impl Prop {
 
 fn op_pat_string(o: &OpPat) -> String {
     match o {
-        OpPat::Const => format!("const"),
         OpPat::Eq => format!("="),
         OpPat::Ite => format!("ite"),
         OpPat::Not => format!("not"),

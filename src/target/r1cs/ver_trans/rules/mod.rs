@@ -119,46 +119,6 @@ impl Encoding for Enc {
         }
     }
 
-    fn variable(ctx: &mut Ctx, name: &str, sort: &Sort, ty: Ty) -> Self {
-        assert_eq!(SortPat::from(sort), ty.sort());
-        let t = leaf_term(Op::Var(name.into(), sort.clone()));
-        match ty {
-            Ty::Bit => {
-                let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
-                ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
-                Enc::Bit(v)
-            }
-            Ty::Bits => {
-                let w = sort.as_bv();
-                Enc::Bits(
-                    (0..w)
-                        .map(|i| {
-                            let bit_t = term![Op::BvBit(i); t.clone()];
-                            let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()));
-                            ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
-                            v
-                        })
-                        .collect(),
-                )
-            }
-            Ty::Uint => {
-                let w = sort.as_bv();
-                let bits: Vec<Term> = (0..w)
-                    .map(|i| {
-                        let bit_t = term![Op::BvBit(i); t.clone()];
-                        let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()));
-                        ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
-                        v
-                    })
-                    .collect();
-                let sum = term(PF_ADD, bits.iter().enumerate().map(|(i, f)|
-                        term![PF_MUL; pf_lit(ctx.field().new_v(Integer::from(1) << i)), f.clone()]).collect());
-                Enc::Uint(sum, w)
-            }
-            Ty::Field => Enc::Field(ctx.fresh(name, t)),
-        }
-    }
-
     fn convert(&self, ctx: &mut Ctx, to: Self::Type) -> Self {
         match (self, to) {
             (Self::Bits(bs), Ty::Uint) => {
@@ -201,6 +161,46 @@ impl Encoding for Enc {
         }
     }
 
+    fn variable(ctx: &mut Ctx, name: &str, sort: &Sort, ty: Ty) -> Self {
+        assert_eq!(SortPat::from(sort), ty.sort());
+        let t = leaf_term(Op::Var(name.into(), sort.clone()));
+        match ty {
+            Ty::Bit => {
+                let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
+                ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                Enc::Bit(v)
+            }
+            Ty::Bits => {
+                let w = sort.as_bv();
+                Enc::Bits(
+                    (0..w)
+                        .map(|i| {
+                            let bit_t = term![Op::BvBit(i); t.clone()];
+                            let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()));
+                            ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                            v
+                        })
+                        .collect(),
+                )
+            }
+            Ty::Uint => {
+                let w = sort.as_bv();
+                let bits: Vec<Term> = (0..w)
+                    .map(|i| {
+                        let bit_t = term![Op::BvBit(i); t.clone()];
+                        let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()));
+                        ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                        v
+                    })
+                    .collect();
+                let sum = term(PF_ADD, bits.iter().enumerate().map(|(i, f)|
+                        term![PF_MUL; pf_lit(ctx.field().new_v(Integer::from(1) << i)), f.clone()]).collect());
+                Enc::Uint(sum, w)
+            }
+            Ty::Field => Enc::Field(ctx.fresh(name, t)),
+        }
+    }
+
     /// The boolean/bv -> field rewrite rules.
     fn rules() -> Vec<Rule<Enc>> {
         use EncTypes::*;
@@ -208,7 +208,6 @@ impl Encoding for Enc {
         use SortPat::{BitVector as BV, Bool, Field as Ff};
         use Ty::*;
         vec![
-            Rule::new(0, OpP::Const, Bool, All(Bit), bool_const),
             Rule::new(0, OpP::Eq, Bool, All(Bit), bool_eq),
             Rule::new(0, OpP::Ite, Bool, All(Bit), bool_ite),
             Rule::new(0, OpP::Not, Bool, All(Bit), not),
@@ -217,7 +216,6 @@ impl Encoding for Enc {
             Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Xor), Bool, All(Bit), xor),
             Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::Or), Bool, All(Bit), or),
             Rule::new(0, OpP::BoolNaryOp(BoolNaryOp::And), Bool, All(Bit), and),
-            Rule::new(0, OpP::Const, BV, All(Bit), bv_const),
             Rule::new(0, OpP::BvBit, BV, All(Bits), bv_bit),
             Rule::new(0, OpP::Ite, BV, Seq(vec![Bit, Uint, Uint]), bv_ite),
             Rule::new(0, OpP::BvUnOp(BvUnOp::Not), BV, All(Bits), bv_not),
@@ -261,7 +259,6 @@ impl Encoding for Enc {
             Rule::new(0, OpP::Eq, Ff, All(Field), pf_eq),
             Rule::new(0, OpP::PfUnOp(PfUnOp::Recip), Ff, All(Field), pf_recip),
             Rule::new(0, OpP::UbvToPf, Ff, All(Uint), ubv_to_pf),
-            Rule::new(0, OpP::Const, Ff, All(Field), pf_const),
             Rule::new(0, OpP::Ite, Ff, Seq(vec![Bit, Field, Field]), pf_ite),
         ]
     }
@@ -277,6 +274,32 @@ impl Encoding for Enc {
                 }
             }
             o => panic!("Cannot choose for op {}", o),
+        }
+    }
+
+    fn const_(f: &FieldT, const_t: &Term, ty: Self::Type) -> Self {
+        assert_eq!(SortPat::from(&check(const_t)), ty.sort());
+        match ty {
+            Ty::Bit => Enc::Bit(bool_to_field(const_t.clone(), f)),
+            Ty::Bits => Enc::Bits(
+                (0..check(const_t).as_bv())
+                    .map(|i| bool_to_field(term![Op::BvBit(i); const_t.clone()], f))
+                    .collect(),
+            ),
+            Ty::Uint => Enc::Uint(
+                term![Op::UbvToPf(f.clone()); const_t.clone()],
+                check(const_t).as_bv(),
+            ),
+            Ty::Field => Enc::Field(const_t.clone()),
+        }
+    }
+
+    fn map<F: Fn(Term) -> Term>(self, f: F) -> Self {
+        match self {
+            Enc::Bit(b) => Enc::Bit(f(b)),
+            Enc::Bits(bs) => Enc::Bits(bs.into_iter().map(f).collect()),
+            Enc::Uint(t, w) => Enc::Uint(f(t), w),
+            Enc::Field(t) => Enc::Field(f(t)),
         }
     }
 }
@@ -454,18 +477,6 @@ fn bool_ite(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(ite(args[0].bit(), args[1].bit(), args[2].bit()))
 }
 
-fn bool_const(ctx: &mut Ctx, op: &Op, _args: &[&Enc]) -> Enc {
-    if let Op::Const(Value::Bool(b)) = op {
-        Enc::Bit(if *b {
-            ctx.one().clone()
-        } else {
-            ctx.zero().clone()
-        })
-    } else {
-        unreachable!()
-    }
-}
-
 fn maj(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     if let [a, b, c] = args {
         // m = ab + bc + ca - 2abc
@@ -482,24 +493,6 @@ fn maj(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 fn bv_bit(_ctx: &mut Ctx, op: &Op, args: &[&Enc]) -> Enc {
     if let Op::BvBit(i) = op {
         Enc::Bit(args[0].bits()[*i].clone())
-    } else {
-        unreachable!()
-    }
-}
-
-fn bv_const(ctx: &mut Ctx, op: &Op, _args: &[&Enc]) -> Enc {
-    if let Op::Const(Value::BitVector(bv)) = op {
-        Enc::Bits(
-            (0..bv.width())
-                .map(|i| {
-                    if bv.bit(i) {
-                        ctx.one().clone()
-                    } else {
-                        ctx.zero().clone()
-                    }
-                })
-                .collect(),
-        )
     } else {
         unreachable!()
     }
@@ -645,15 +638,6 @@ fn pf_recip(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     ctx.assert(term![EQ; term![PF_MUL; x.clone(), z.clone()], ctx.zero().clone()]);
     ctx.assert(term![EQ; term![PF_MUL; i.clone(), z.clone()], ctx.zero().clone()]);
     Enc::Field(i)
-}
-
-#[allow(dead_code)]
-fn pf_const(ctx: &mut Ctx, op: &Op, _args: &[&Enc]) -> Enc {
-    if let Op::Const(Value::Field(b)) = op {
-        Enc::Field(ctx.f_const(b))
-    } else {
-        unreachable!()
-    }
 }
 
 fn pf_sub(a: Term, b: Term) -> Term {

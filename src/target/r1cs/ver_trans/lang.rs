@@ -9,7 +9,7 @@ use crate::ir::term::*;
 use circ_fields::FieldT;
 use rug::Integer;
 
-pub use super::ast::{OpPat, SortPat, Pattern};
+pub use super::ast::{OpPat, Pattern, SortPat};
 
 /// The type of an encoding.
 ///
@@ -45,18 +45,26 @@ pub trait Encoding: Clone + Debug {
     fn variable(c: &mut Ctx, name: &str, sort: &Sort, ty: Self::Type) -> Self;
     /// The above, but with the default encoding type.
     fn d_variable(c: &mut Ctx, name: &str, sort: &Sort) -> Self {
-        Self::variable(
-            c,
-            name,
-            sort,
-            <Self::Type as EncodingType>::default_for_sort(sort),
-        )
+        let ty = <Self::Type as EncodingType>::default_for_sort(sort);
+        Self::variable(c, name, sort, ty)
     }
     /// Return the list of all rules applicable to this encoding.
     fn rules() -> Vec<Rule<Self>>;
 
     /// Choose a rule for this term given these available encodings.
     fn choose(t: &Term, available_encs: &[&BTreeSet<Self::Type>]) -> usize;
+
+    /// Constant embedding.
+    fn const_(f: &FieldT, const_t: &Term, ty: Self::Type) -> Self;
+
+    /// [Enconding::const_], but with the default encoding type.
+    fn d_const_(f: &FieldT, const_t: &Term) -> Self {
+        let ty = <Self::Type as EncodingType>::default_for_sort(&check(const_t));
+        Self::const_(f, const_t, ty)
+    }
+
+    /// Apply this function to all terms.
+    fn map<F: Fn(Term) -> Term>(self, f: F) -> Self;
 }
 
 /// How inputs should be encoded for a [Rule].
