@@ -315,8 +315,8 @@ impl<S: Clone + Hash + Eq + Display> R1cs<S> {
             s.extend(
                 format!(
                     " {} {}",
-                    self.idxs_signals.get(idx).unwrap(),
                     format_i(coeff),
+                    self.idxs_signals.get(idx).unwrap(),
                 )
                 .chars(),
             );
