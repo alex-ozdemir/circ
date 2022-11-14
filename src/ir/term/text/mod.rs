@@ -992,4 +992,17 @@ mod test {
         let c2 = parse_precompute(s.as_bytes());
         assert_eq!(c, c2);
     }
+
+    #[test]
+    fn ubtopf_rountrip() {
+        let t = parse_term(
+            b"
+        (declare ((a (bv 4)))
+         ((ubv2pf 19) a))",
+        );
+        let s = serialize_term(&t);
+        println!("{}", s);
+        let t2 = parse_term(s.as_bytes());
+        assert_eq!(t, t2);
+    }
 }

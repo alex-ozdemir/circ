@@ -334,7 +334,7 @@ impl Display for Op {
             Op::PfBitSplit(a) => write!(f, "(pfbitsplit {})", a),
             Op::IntNaryOp(a) => write!(f, "{}", a),
             Op::IntBinPred(a) => write!(f, "{}", a),
-            Op::UbvToPf(a) => write!(f, "(bv2pf {})", a.modulus()),
+            Op::UbvToPf(a) => write!(f, "(ubv2pf {})", a.modulus()),
             Op::Select => write!(f, "select"),
             Op::Store => write!(f, "store"),
             Op::Tuple => write!(f, "tuple"),
