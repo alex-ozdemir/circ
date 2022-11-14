@@ -1845,27 +1845,44 @@ pub type TermSet = hashconsing::coll::HConSet<Term>;
 pub(super) const TERM_CACHE_LIMIT: usize = 65536;
 
 /// Iterator over descendents in child-first order.
-pub struct PostOrderIter {
+pub struct PostOrderIter<'a> {
     // (cs stacked, term)
     stack: Vec<(bool, Term)>,
     visited: TermSet,
+    skip_if: Option<Box<dyn Fn(&Term) -> bool + 'a>>,
 }
 
-impl PostOrderIter {
+impl PostOrderIter<'static> {
     /// Make an iterator over the descendents of `root`.
     pub fn new(root: Term) -> Self {
         Self {
             stack: vec![(false, root)],
             visited: TermSet::new(),
+            skip_if: None,
         }
     }
 }
 
-impl std::iter::Iterator for PostOrderIter {
+impl<'a> PostOrderIter<'a> {
+    /// Skip a term (and it's descendents) if `f` returns true.
+    ///
+    /// The descendents may still be visited if they're also descendents of another non-skipped
+    /// node.
+    pub fn skip_if<F: Fn(&Term) -> bool + 'a>(mut self, f: F) -> Self {
+        self.skip_if = Some(Box::new(f));
+        self
+    }
+
+    fn skip_it(&self, t: &Term) -> bool {
+        self.skip_if.as_ref().map(|s| s(t)).unwrap_or(false)
+    }
+}
+
+impl<'a> std::iter::Iterator for PostOrderIter<'a> {
     type Item = Term;
     fn next(&mut self) -> Option<Term> {
         while let Some((children_pushed, t)) = self.stack.last() {
-            if self.visited.contains(t) {
+            if self.visited.contains(t) || self.skip_it(t) {
                 self.stack.pop();
             } else if !children_pushed {
                 self.stack.last_mut().unwrap().0 = true;
@@ -2062,8 +2079,8 @@ pub struct Computation {
 }
 
 impl Computation {
-    /// Create a new variable, `name: s`, where `val_fn` can be called to get the concrete value,
-    /// and `public` indicates whether this variable is public in the constraint system.
+    /// Create a new variable, `name: s`, where `public` indicates whether this variable is public
+    /// in the constraint system.
     ///
     /// ## Arguments
     ///
