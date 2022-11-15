@@ -20,6 +20,8 @@ use std::str::FromStr;
 
 use ieee754::Ieee754;
 
+pub mod writer;
+
 struct SmtDisp<'a, T>(pub &'a T);
 
 impl<'a, T: Expr2Smt<()> + 'a> Display for SmtDisp<'a, T> {
@@ -443,9 +445,26 @@ fn preprocess(t: &Term) -> Term {
             Op::UbvToPf(field) => {
                 let input = cache.get(&n.cs[0]).unwrap().clone();
                 let n_bits = check(&input).as_bv();
-                let bits = (0..n_bits).map(|i| term![Op::BvBit(i); input.clone()]);
+                let bits = (0..n_bits).map(|i| term![EQ; term![Op::BvExtract(i, i); input.clone()], bv_lit(1,1)]);
                 term(PF_ADD, bits.into_iter().enumerate().map(|(i, b)| 
                     term![ITE; b, pf_lit(field.new_v(Integer::from(1) << i)), pf_lit(field.zero())]).collect())
+            }
+            Op::BoolToBv => {
+                let cond = cache.get(&n.cs[0]).unwrap().clone();
+                term![ITE; cond, bv_lit(1, 1), bv_lit(0, 1)]
+            }
+            Op::BoolMaj => {
+                let a = cache.get(&n.cs[0]).unwrap().clone();
+                let b = cache.get(&n.cs[1]).unwrap().clone();
+                let c = cache.get(&n.cs[2]).unwrap().clone();
+                term![OR;
+                    term![AND; a.clone(), b.clone()],
+                    term![AND; b, c.clone()],
+                    term![AND; a, c]]
+            }
+            Op::BvBit(i) => {
+                let bv = cache.get(&n.cs[0]).unwrap().clone();
+                term![EQ; term![Op::BvExtract(*i, *i); bv], bv_lit(1,1)]
             }
             _ => term(
                 n.op.clone(),
@@ -775,6 +794,8 @@ mod test {
         assert!(check_sat(&t));
     }
 
+    // ignored b/c the tuple interface seems unstable right now
+    #[ignore]
     #[test]
     fn tuple_is_sat() {
         let t = term![Op::Eq; term![Op::Field(0); term![Op::Tuple; bv_lit(0,4), bv_lit(5,6)]], leaf_term(Op::Var("a".into(), Sort::BitVector(4)))];

@@ -1,6 +1,4 @@
 To do:
-* brute-force CirC-based solver
-* dump VCs as benchmark sets
 * fix bugs in old pipeline
 * secret/public variables
 * comparative compiler perf evaluation
@@ -9,6 +7,8 @@ Deferred to do:
 * options system
 
 Done:
+* dump VCs as benchmark sets
+* brute-force CirC-based solver
 * ff: const (timeout)
 * bv: pf2bv (incomplete) (it's just incomplete)
 * tag-based VC filtering?

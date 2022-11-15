@@ -1,9 +1,9 @@
 use circ::ir::term::text::*;
 use circ::target::r1cs::ver_trans::{
     rules::Enc,
-    ver::{Bound, VerifiableEncoding},
+    ver::{Bound, VerifiableEncoding, TAGS},
 };
-use circ::target::smt::find_model;
+use circ::target::smt::{find_model, writer::write_query};
 use circ::util::field::DFL_T;
 use fxhash::FxHashMap;
 use std::collections::{BTreeMap, BTreeSet};
@@ -11,6 +11,8 @@ use std::str::FromStr;
 use structopt::StructOpt;
 
 use std::time::Instant;
+use std::fmt::Write;
+use std::fs::{remove_dir_all, create_dir_all, write, File};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "ver_r1cs", about = "Verifier for CirC's R1CS lowering pass")]
@@ -32,6 +34,9 @@ struct Options {
 
     #[structopt(long, short)]
     exclude: Vec<Filter>,
+
+    #[structopt(long, short)]
+    output_dir: Option<String>,
 }
 
 #[derive(Debug)]
@@ -152,6 +157,32 @@ fn main() -> Result<(), String> {
             }
             println!("");
         }
+    } else if let Some(output_dir) = opts.output_dir {
+        let mut bench_csv = String::new();
+        for t in TAGS {
+            write!(&mut bench_csv, "{},", t).unwrap();
+        }
+        writeln!(&mut bench_csv, "num,circ_ir_path,smt2_path").unwrap();
+        remove_dir_all(&output_dir).ok();
+        create_dir_all(format!("{}/benchmarks/smt2", output_dir)).unwrap();
+        create_dir_all(format!("{}/benchmarks/circ_ir/", output_dir)).unwrap();
+        for (i, vc) in all_vcs.into_iter().enumerate() {
+            let included = opts.include.matches(&vc.tags);
+            let excluded = opts.exclude.iter().any(|f| f.matches(&vc.tags));
+            if included && !excluded {
+                let circ_ir_subpath = format!("circ_ir/{:05}.circ", i);
+                let smt2_subpath = format!("smt2/{:05}.smt2", i);
+                let circ_ir_path = format!("{}/benchmarks/{}", output_dir, circ_ir_subpath);
+                let smt2_path = format!("{}/benchmarks/{}", output_dir, smt2_subpath);
+                for t in TAGS {
+                    write!(&mut bench_csv, "{},", vc.tags.get(*t).map(|s| s.as_str()).unwrap_or("")).unwrap();
+                }
+                writeln!(&mut bench_csv, "{},{},{}", i, circ_ir_subpath, smt2_subpath).unwrap();
+                write(circ_ir_path, pp_sexpr(serialize_term(&vc.formula).as_bytes(), 120)).unwrap();
+                write_query(&mut File::create(smt2_path).unwrap(), &vc.formula)
+            }
+        }
+        write(format!("{}/benchmarks/vcs.csv", output_dir), bench_csv).unwrap();
     } else {
         for vc in all_vcs {
             let included = opts.include.matches(&vc.tags);

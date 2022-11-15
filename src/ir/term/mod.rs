@@ -1369,6 +1369,11 @@ impl TermData {
     pub fn is_const(&self) -> bool {
         matches!(&self.op, Op::Const(..))
     }
+
+    /// Is this a quantifier?
+    pub fn is_quant(&self) -> bool {
+        matches!(&self.op, Op::Quant(..))
+    }
 }
 
 impl Value {

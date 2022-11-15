@@ -20,6 +20,21 @@ fn correct_precompute(c: &Ctx) -> Vec<Term> {
         .collect()
 }
 
+/// Return the assertions of this [Ctx] with the precompute substituted in.
+fn precompute_sub(c: &Ctx) -> Vec<Term> {
+    let mut subs: TermMap<Term> = Default::default();
+    for (val, name) in &c.new_variables {
+        let val_s = extras::substitute_cache(&val, &mut subs);
+        let sort = check(&val_s);
+        let var = leaf_term(Op::Var(name.clone(), sort));
+        assert!(subs.insert(var, val_s).is_none());
+    }
+    c.assertions
+        .iter()
+        .map(|a| extras::substitute_cache(a, &mut subs))
+        .collect()
+}
+
 /// An encoding scheme with formalized semantics.
 pub trait VerifiableEncoding: Encoding {
     /// Given a term `t` and encoded form `self`, return a boolean term which is true iff the
@@ -221,14 +236,11 @@ pub trait VerifiableEncoding: Encoding {
                 let t = term(op.clone(), args.clone());
                 let _e_t = rule.apply(&mut ctx, &t.op, &e_args.iter().collect::<Vec<_>>());
 
-                // assert the pre-compute is correct
-                for (val, name) in ctx.new_variables {
-                    let var = leaf_term(Op::Var(name, check(&val)));
-                    assertions.push(term![EQ; var, val]);
-                }
+                // assert the pre-compute is correct, through substitution
+                let ctx_assertions_subbed = precompute_sub(&ctx);
 
                 // assert that some contraint is broken
-                assertions.push(term![NOT; mk_and(ctx.assertions)]);
+                assertions.push(term![NOT; mk_and(ctx_assertions_subbed)]);
 
                 VerCond::new(Complete, RuleType::Op, mk_and(assertions))
                     .sort(&sort)
@@ -264,6 +276,7 @@ pub trait VerifiableEncoding: Encoding {
                     .chain(Self::sound_ops(rule, bnd))
                     .chain(Self::complete_ops(rule, bnd))
             }))
+            .map(VerCond::complete)
             .collect()
     }
 }
@@ -317,14 +330,47 @@ pub struct VerCond {
     pub formula: Term,
 }
 
+const TAG_PROP: &str = "prop";
+const TAG_TY: &str = "ty";
+const TAG_SORT: &str = "sort";
+const TAG_SORT_PAT: &str = "sort_pat";
+const TAG_BV_BITS: &str = "bv_bits";
+const TAG_ARG_SORTS: &str = "arg_sorts";
+const TAG_N_ARGS: &str = "n_args";
+const TAG_OP_PAT: &str = "op_pat";
+const TAG_FROM: &str = "from";
+const TAG_TO: &str = "to";
+
+/// All tags
+pub const TAGS: &[&str] = &[
+    TAG_PROP,
+    TAG_TY,
+    TAG_SORT,
+    TAG_SORT_PAT,
+    TAG_BV_BITS,
+    TAG_ARG_SORTS,
+    TAG_N_ARGS,
+    TAG_OP_PAT,
+    TAG_FROM,
+    TAG_TO,
+];
+
 impl VerCond {
     fn new(prop: Prop, ty: RuleType, formula: Term) -> Self {
         let this = Self {
             tags: Default::default(),
             formula,
         };
-        this.tag("prop", &format!("{:?}", prop))
-            .tag("ty", &format!("{:?}", ty))
+        this.tag(TAG_PROP, &format!("{:?}", prop))
+            .tag(TAG_TY, &format!("{:?}", ty))
+    }
+    fn complete(mut self) -> Self {
+        for t in TAGS {
+            if !self.tags.contains_key(*t) {
+                self = self.tag(t, &"");
+            }
+        }
+        self
     }
     fn tag<T: AsRef<str>>(mut self, key: &str, val: &T) -> Self {
         assert!(self
@@ -338,26 +384,26 @@ impl VerCond {
             Sort::BitVector(w) => *w,
             _ => 0,
         };
-        self.tag("sort", &format!("{}", sort))
-            .tag("sort_pat", &format!("{}", SortPat::from(sort)))
-            .tag("bv_bits", &format!("{}", w))
+        self.tag(TAG_SORT, &format!("{}", sort))
+            .tag(TAG_SORT_PAT, &format!("{}", SortPat::from(sort)))
+            .tag(TAG_BV_BITS, &format!("{}", w))
     }
     fn arg_sorts(self, sorts: &[Sort]) -> Self {
         let mut s = String::new();
         for so in sorts {
             s += &format!("{}", so);
         }
-        self.tag("arg_sorts", &s)
-            .tag("n_args", &format!("{}", sorts.len()))
+        self.tag(TAG_ARG_SORTS, &s)
+            .tag(TAG_N_ARGS, &format!("{}", sorts.len()))
     }
     fn op_pat(self, sort_pat: OpPat) -> Self {
-        self.tag("op_pat", &format!("{}", sort_pat))
+        self.tag(TAG_OP_PAT, &format!("{}", sort_pat))
     }
     fn from<T: EncodingType>(self, ty: T) -> Self {
-        self.tag("from", &format!("{:?}", ty))
+        self.tag(TAG_FROM, &format!("{:?}", ty))
     }
     fn to<T: EncodingType>(self, ty: T) -> Self {
-        self.tag("to", &format!("{:?}", ty))
+        self.tag(TAG_TO, &format!("{:?}", ty))
     }
 }
 
