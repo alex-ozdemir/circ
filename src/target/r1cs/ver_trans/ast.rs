@@ -8,6 +8,8 @@
 
 use crate::ir::term::*;
 
+use std::fmt::{self, Display, Formatter};
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 /// A pattern for operators
 pub enum OpPat {
@@ -58,6 +60,33 @@ pub enum OpPat {
     UbvToPf
 }
 
+impl Display for OpPat {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            OpPat::Ite => write!(f, "ite"),
+            OpPat::Eq => write!(f, "="),
+            OpPat::BvBinOp(a) => write!(f, "{}", a),
+            OpPat::BvBinPred(a) => write!(f, "{}", a),
+            OpPat::BvNaryOp(a) => write!(f, "{}", a),
+            OpPat::BvUnOp(a) => write!(f, "{}", a),
+            OpPat::BoolToBv => write!(f, "bool2bv"),
+            OpPat::BvExtract => write!(f, "extract"),
+            OpPat::BvConcat => write!(f, "concat"),
+            OpPat::BvUext => write!(f, "uext"),
+            OpPat::BvSext => write!(f, "sext"),
+            OpPat::PfToBv => write!(f, "pf2bv"),
+            OpPat::Implies => write!(f, "=>"),
+            OpPat::BoolNaryOp(a) => write!(f, "{}", a),
+            OpPat::Not => write!(f, "not"),
+            OpPat::BvBit => write!(f, "bit"),
+            OpPat::BoolMaj => write!(f, "maj"),
+            OpPat::PfUnOp(a) => write!(f, "{}", a),
+            OpPat::PfNaryOp(a) => write!(f, "{}", a),
+            OpPat::UbvToPf => write!(f, "ubv2pf"),
+        }
+    }
+}
+
 impl From<&Op> for OpPat {
     fn from(op: &Op) -> Self {
         match op {
@@ -104,6 +133,16 @@ impl From<&Sort> for SortPat {
             Sort::BitVector(_) => SortPat::BitVector,
             Sort::Field(_) => SortPat::Field,
             _ => unimplemented!("sort {}", s),
+        }
+    }
+}
+
+impl Display for SortPat {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            SortPat::Bool => write!(f, "bool"),
+            SortPat::BitVector => write!(f, "bv"),
+            SortPat::Field => write!(f, "field"),
         }
     }
 }

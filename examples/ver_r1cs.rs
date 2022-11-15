@@ -1,101 +1,125 @@
 use circ::ir::term::text::*;
 use circ::target::r1cs::ver_trans::{
-    lang::{OpPat, SortPat, Encoding},
     rules::Enc,
-    ver::{
-        c_completeness_terms, c_soundness_terms, completeness_terms, soundness_terms,
-        v_completeness_terms, v_soundness_terms, Bound,
-    },
+    ver::{Bound, VerifiableEncoding},
 };
 use circ::target::smt::find_model;
 use circ::util::field::DFL_T;
-use structopt::{clap::arg_enum, StructOpt};
+use fxhash::FxHashMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
+use structopt::StructOpt;
 
 use std::time::Instant;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "ver_r1cs", about = "Verifier for CirC's R1CS lowering pass")]
 struct Options {
-    #[structopt(long, short = "a")]
+    #[structopt(long, short = "a", default_value = "2")]
+    /// The maximum number of arguments
     max_args: usize,
 
-    #[structopt(long, short = "b")]
+    #[structopt(long, short = "b", default_value = "2")]
+    /// The maximum width of any bit-vector
     max_bv_bits: usize,
 
-    #[structopt(long, short)]
-    properties: Vec<Prop>,
+    #[structopt(long, short = "l")]
+    /// Don't verify anything, just list tags for the VCs
+    list_tags: bool,
+
+    #[structopt(long, short, default_value = "")]
+    include: Filter,
 
     #[structopt(long, short)]
-    ops: Vec<String>,
-
-    #[structopt(long, short = "O")]
-    excluded_ops: Vec<String>,
-
-    #[structopt(long, short)]
-    rule_types: Vec<RuleType>,
-
-    #[structopt(long, short, possible_values = &["bool", "bitvector", "field"])]
-    sorts: Vec<String>,
+    exclude: Vec<Filter>,
 }
 
-arg_enum! {
-    /// A verifiable property: 'sound' or 'complete'
-    #[derive(Debug, PartialEq, Eq, Clone)]
-    enum Prop {
-        Sound,
-        Complete,
+#[derive(Debug)]
+struct Test {
+    key: String,
+    op: Op,
+    value: String,
+}
+
+impl Test {
+    fn new(k: &str, op: Op, v: &str) -> Self {
+        Test {
+            key: k.to_lowercase(),
+            op,
+            value: v.to_lowercase(),
+        }
     }
-}
-
-arg_enum! {
-    /// A verifiable property: 'sound' or 'complete'
-    #[derive(Debug, PartialEq, Eq, Clone)]
-    enum RuleType {
-        Var,
-        Conv,
-        Enc,
-    }
-}
-
-impl Prop {
-    fn failure_message(&self) -> &'static str {
-        match self {
-            Self::Sound => "unsound",
-            Self::Complete => "incomplete",
+    fn matches(&self, tags: &FxHashMap<String, String>) -> bool {
+        if let Some(v) = tags.get(&self.key) {
+            match self.op {
+                Op::Gt => usize::from_str(v).unwrap() > usize::from_str(&self.value).unwrap(),
+                Op::Ge => usize::from_str(v).unwrap() >= usize::from_str(&self.value).unwrap(),
+                Op::Lt => usize::from_str(v).unwrap() < usize::from_str(&self.value).unwrap(),
+                Op::Le => usize::from_str(v).unwrap() <= usize::from_str(&self.value).unwrap(),
+                Op::Eq => v == &self.value,
+                Op::Ne => v != &self.value,
+            }
+        } else {
+            false
         }
     }
 }
 
-fn op_pat_string(o: &OpPat) -> String {
-    match o {
-        OpPat::Eq => format!("="),
-        OpPat::Ite => format!("ite"),
-        OpPat::Not => format!("not"),
-        OpPat::Implies => format!("=>"),
-        OpPat::BoolMaj => format!("maj"),
-        OpPat::BoolNaryOp(o) => format!("{}", o),
-        OpPat::PfNaryOp(o) => format!("{}", o),
-        OpPat::PfUnOp(o) => format!("{}", o),
-        OpPat::BvBit => format!("bit"),
-        OpPat::BvBinOp(o) => format!("{}", o),
-        OpPat::BvBinPred(o) => format!("{}", o),
-        OpPat::BvNaryOp(o) => format!("{}", o),
-        OpPat::BvUnOp(o) => format!("{}", o),
-        OpPat::BoolToBv => format!("bool2bv"),
-        OpPat::BvExtract => format!("bvextract"),
-        OpPat::BvConcat => format!("bvconcat"),
-        OpPat::BvUext => format!("bvuext"),
-        OpPat::BvSext => format!("bvsext"),
-        OpPat::PfToBv => format!("pf2bv"),
-        OpPat::UbvToPf => format!("ubv2pf"),
+#[derive(Debug)]
+enum Op {
+    Gt,
+    Ge,
+    Lt,
+    Le,
+    Eq,
+    Ne,
+}
+
+#[derive(Debug)]
+struct Filter(Vec<Test>);
+
+impl Filter {
+    fn matches(&self, tags: &FxHashMap<String, String>) -> bool {
+        self.0.iter().all(|f| f.matches(tags))
     }
 }
 
-fn sort_pat_string(s: &SortPat) -> String {
-    match s {
-        SortPat::Bool => format!("bool"),
-        SortPat::BitVector => format!("bitvector"),
-        SortPat::Field => format!("field"),
+impl FromStr for Test {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(i) = s.find("!=") {
+            Ok(Self::new(&s[..i], Op::Ne, &s[i + 2..]))
+        } else if let Some(i) = s.find(">=") {
+            Ok(Self::new(&s[..i], Op::Ge, &s[i + 2..]))
+        } else if let Some(i) = s.find("<=") {
+            Ok(Self::new(&s[..i], Op::Le, &s[i + 2..]))
+        } else if let Some(i) = s.find("=") {
+            Ok(Self::new(&s[..i], Op::Eq, &s[i + 1..]))
+        } else if let Some(i) = s.find(">") {
+            Ok(Self::new(&s[..i], Op::Gt, &s[i + 1..]))
+        } else if let Some(i) = s.find("<") {
+            Ok(Self::new(&s[..i], Op::Lt, &s[i + 1..]))
+        } else {
+            Err(format!(
+                "Could not find operator in {}; ops: {{=, !=, >=, <=, >, <}}",
+                s
+            ))
+        }
+    }
+}
+
+impl FromStr for Filter {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut o = Vec::new();
+        for seg in s.trim().split(",") {
+            if !seg.is_empty() {
+                o.push(Test::from_str(seg.trim())?);
+            }
+        }
+        Ok(Filter(o))
     }
 }
 
@@ -105,68 +129,44 @@ fn main() -> Result<(), String> {
         .format_timestamp(None)
         .init();
     let opts = dbg!(Options::from_args());
-    let props = if opts.properties.is_empty() {
-        vec![Prop::Sound, Prop::Complete]
-    } else {
-        opts.properties.clone()
-    };
-    let rule_types = if opts.rule_types.is_empty() {
-        vec![RuleType::Enc, RuleType::Var, RuleType::Conv]
-    } else {
-        opts.rule_types.clone()
-    };
     let bnd = Bound {
         args: opts.max_args,
         bv_bits: opts.max_bv_bits,
         field: DFL_T.clone(),
     };
 
-    if rule_types.contains(&RuleType::Conv) {
-        if props.contains(&Prop::Sound) {
-            for (from, to, s, t) in c_soundness_terms::<Enc>(&bnd) {
-                println!("check: sound conversion {:?} -> {:?} : {}", from, to, s);
-                if let Some(model) = find_model(&t) {
-                    println!("ERROR: unsound");
-                    println!(
-                        "Formula:\n{}\n",
-                        pp_sexpr(serialize_term(&t).as_bytes(), 100)
-                    );
-                    println!(
-                        "Counterexample: {}",
-                        serialize_value_map(&model.into_iter().collect())
-                    );
-                    return Err(format!("ERROR"));
-                }
-            }
-        }
-        if props.contains(&Prop::Complete) {
-            for (from, to, s, t) in c_completeness_terms::<Enc>(&bnd) {
-                println!("check: complete conversion {:?} -> {:?} : {}", from, to, s);
-                if let Some(model) = find_model(&t) {
-                    println!("ERROR: unsound");
-                    println!(
-                        "Formula:\n{}\n",
-                        pp_sexpr(serialize_term(&t).as_bytes(), 100)
-                    );
-                    println!(
-                        "Counterexample: {}",
-                        serialize_value_map(&model.into_iter().collect())
-                    );
-                    return Err(format!("ERROR"));
-                }
-            }
-        }
-    }
+    let all_vcs = <Enc as VerifiableEncoding>::all_vcs(&bnd);
 
-    if rule_types.contains(&RuleType::Var) {
-        if props.contains(&Prop::Complete) {
-            for (s, t) in v_completeness_terms::<Enc>(&bnd) {
-                println!("check: variable {}", s);
-                if let Some(model) = find_model(&t) {
-                    println!("ERROR");
+    if opts.list_tags {
+        let mut tags_and_values: BTreeMap<String, BTreeSet<String>> = Default::default();
+        for vc in all_vcs {
+            for (k, v) in vc.tags {
+                tags_and_values.entry(k).or_default().insert(v);
+            }
+        }
+        println!("Tags and values:");
+        for (k, vs) in tags_and_values {
+            print!(" {} =", k);
+            for v in vs {
+                print!(" {},", v);
+            }
+            println!("");
+        }
+    } else {
+        for vc in all_vcs {
+            let included = opts.include.matches(&vc.tags);
+            let excluded = opts.exclude.iter().any(|f| f.matches(&vc.tags));
+            if included && !excluded {
+                println!("VC tags:");
+                for (k, v) in &vc.tags {
+                    println!(" {} = {}", k, v);
+                }
+                let start = Instant::now();
+                if let Some(model) = find_model(&vc.formula) {
+                    println!("ERROR:");
                     println!(
                         "Formula:\n{}\n",
-                        pp_sexpr(serialize_term(&t).as_bytes(), 100)
+                        pp_sexpr(serialize_term(&vc.formula).as_bytes(), 100)
                     );
                     println!(
                         "Counterexample: {}",
@@ -174,57 +174,7 @@ fn main() -> Result<(), String> {
                     );
                     return Err(format!("ERROR"));
                 }
-            }
-        }
-        if props.contains(&Prop::Sound) {
-            for (s, t) in v_soundness_terms::<Enc>(&bnd) {
-                println!("check: variable {}", s);
-                if let Some(model) = find_model(&t) {
-                    println!("ERROR");
-                    println!(
-                        "Formula:\n{}\n",
-                        pp_sexpr(serialize_term(&t).as_bytes(), 100)
-                    );
-                    println!(
-                        "Counterexample: {}",
-                        serialize_value_map(&model.into_iter().collect())
-                    );
-                    return Err(format!("ERROR"));
-                }
-            }
-        }
-    }
-
-    if rule_types.contains(&RuleType::Enc) {
-        for r in Enc::rules() {
-            let op_ok = opts.ops.is_empty() || opts.ops.contains(&op_pat_string(&r.pattern().0));
-            let ex_op_ok = !opts.excluded_ops.contains(&sort_pat_string(&r.pattern().1));
-            let sort_ok =
-                opts.sorts.is_empty() || opts.sorts.contains(&sort_pat_string(&r.pattern().1));
-            if op_ok && ex_op_ok && sort_ok {
-                for prop in &props {
-                    let f = match prop {
-                        Prop::Sound => soundness_terms,
-                        Prop::Complete => completeness_terms,
-                    };
-                    for (t, s, soundness) in f(&r, &bnd) {
-                        println!("check: {:?} {} {}", prop, t, s);
-                        let start = Instant::now();
-                        if let Some(model) = find_model(&soundness) {
-                            println!("ERROR: {}", prop.failure_message());
-                            println!(
-                                "Formula:\n{}\n",
-                                pp_sexpr(serialize_term(&soundness).as_bytes(), 100)
-                            );
-                            println!(
-                                "Counterexample: {}",
-                                serialize_value_map(&model.into_iter().collect())
-                            );
-                            return Err(format!("ERROR: {}", prop.failure_message()));
-                        }
-                        println!("  time: {:.3}", start.elapsed().as_secs_f64());
-                    }
-                }
+                println!("Verified in {}s", start.elapsed().as_secs_f64());
             }
         }
     }
