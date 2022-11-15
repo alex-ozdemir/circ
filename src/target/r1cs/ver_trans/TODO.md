@@ -1,14 +1,17 @@
 To do:
-* tag-based VC filtering?
-* brute-force completeness conditions? SMT gets rekt by pf2bv
+* brute-force CirC-based solver
+* dump VCs as benchmark sets
 * fix bugs in old pipeline
-* options system
-* comparative evaluation
-* ff: const (timeout)
-* bv: pf2bv (incomplete)
 * secret/public variables
+* comparative compiler perf evaluation
+
+Deferred to do:
+* options system
 
 Done:
+* ff: const (timeout)
+* bv: pf2bv (incomplete) (it's just incomplete)
+* tag-based VC filtering?
 * field flatten -> R1CS
 * better Pf2Bv in SMT BE
 * ff: ubv2pf
