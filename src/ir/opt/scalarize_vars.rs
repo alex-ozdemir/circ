@@ -71,7 +71,7 @@ impl RewritePass for Pass {
             let mut new_var_reqs = Vec::new();
             let new = create_vars(name, orig.clone(), sort, &mut new_var_reqs, true);
             for (name, term) in new_var_reqs {
-                computation.extend_precomputation(name, term);
+                computation.extend_precomputation(name, term, None);
             }
             Some(new)
         } else {

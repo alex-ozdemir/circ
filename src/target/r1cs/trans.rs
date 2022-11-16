@@ -859,13 +859,47 @@ impl ToR1cs {
                 }
                 Op::UbvToPf(_) => self.get_bv_uint(&c.cs[0]),
                 Op::PfUnOp(PfUnOp::Neg) => -self.get_pf(&c.cs[0]).clone(),
-                Op::PfUnOp(PfUnOp::Recip) => {
-                    let x = self.get_pf(&c.cs[0]).clone();
-                    let inv_x = self.fresh_var("recip", term![PF_RECIP; x.0.clone()], false);
-                    self.r1cs
-                        .constraint(x.1, inv_x.1.clone(), self.r1cs.zero() + 1);
-                    inv_x
-                }
+                Op::PfUnOp(PfUnOp::Recip) => match *super::RELAXATION {
+                    Relaxation::Incomplete => {
+                        // ix = 1
+                        let x = self.get_pf(&c.cs[0]).clone();
+                        let inv_x = self.fresh_var("recip", term![PF_RECIP; x.0.clone()], false);
+                        self.r1cs
+                            .constraint(x.1, inv_x.1.clone(), self.r1cs.zero() + 1);
+                        inv_x
+                    }
+                    Relaxation::NonDet => {
+                        // ixx = x
+                        let x = self.get_pf(&c.cs[0]).clone();
+                        let x2 = self.mul(x.clone(), x.clone());
+                        let inv_x = self.fresh_var("recip", term![PF_RECIP; x.0.clone()], false);
+                        self.r1cs.constraint(x2.1, inv_x.1.clone(), x.1);
+                        inv_x
+                    }
+                    Relaxation::Det => {
+                        // ix = 1 - z
+                        // zx = 0
+                        // zi = 0
+                        let x = self.get_pf(&c.cs[0]).clone();
+                        let eqz = term![Op::Eq; x.0.clone(), self.zero.0.clone()];
+                        let i = self.fresh_var(
+                            "is_zero_inv",
+                            term![Op::Ite; eqz.clone(), self.zero.0.clone(), term![PF_RECIP; x.0.clone()]],
+                            false,
+                        );
+                        let z = self.fresh_var(
+                            "is_zero",
+                            term![Op::Ite; eqz, self.one.0.clone(), self.zero.0.clone()],
+                            false,
+                        );
+                        self.r1cs
+                            .constraint(i.1.clone(), x.1.clone(), -z.1.clone() + 1);
+                        self.r1cs.constraint(z.1.clone(), x.1, self.r1cs.zero());
+                        self.r1cs
+                            .constraint(z.1.clone(), i.1.clone(), self.r1cs.zero());
+                        i
+                    }
+                },
                 _ => panic!("Non-field in embed_pf: {}", c),
             };
             self.cache.insert(c.clone(), EmbeddedTerm::Field(lc));

@@ -31,6 +31,7 @@ pub fn to_r1cs(mut cs: Computation, modulus: FieldT) -> (R1cs<String>, ProverDat
         cs.outputs = vec![term(AND, cs.outputs)];
     }
     trace!("Pre-lower: {}", text::pp_sexpr(text::serialize_term(&cs.outputs()[0]).as_bytes(), 120));
+    trace!("Pre-lower: {}", text::pp_sexpr(format!("{}", cs.metadata).as_bytes(), 120));
     let mut cs = apply(&modulus, cs);
     trace!("Post-lower: {}", text::pp_sexpr(text::serialize_term(&cs.outputs()[0]).as_bytes(), 120));
     cs.precomputes.recompute_inputs();

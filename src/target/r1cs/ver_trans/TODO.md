@@ -1,12 +1,13 @@
 To do:
 * fix bugs in old pipeline
-* secret/public variables
 * comparative compiler perf evaluation
+* test public vars
 
 Deferred to do:
 * options system
 
 Done:
+* secret/public variables
 * dump VCs as benchmark sets
 * brute-force CirC-based solver
 * ff: const (timeout)

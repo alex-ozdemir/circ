@@ -123,10 +123,10 @@ impl Encoding for Enc {
         match self.type_() {
             Ty::Bit => c.assert(term![EQ; self.bit(), other.bit()]),
             Ty::Bits => {
-                for (l, r) in self.bits().iter().zip(other.bits()) {
-                    c.assert(term![EQ; l.clone(), r.clone()])
-                }
-            },
+                let l = bit_join(c.field(), self.bits().iter().cloned());
+                let r = bit_join(c.field(), other.bits().iter().cloned());
+                c.assert(term![EQ; l, r])
+            }
             Ty::Uint => c.assert(term![EQ; self.uint().0, other.uint().0]),
             Ty::Field => c.assert(term![EQ; self.field(), other.field()]),
         }
@@ -149,8 +149,11 @@ impl Encoding for Enc {
                 let bits: Vec<Term> = (0..*w)
                     .map(|i| {
                         let bit_t = term![Op::BvBit(i); bv_t.clone()];
-                        let v =
-                            ctx.fresh(&format!("conv_bit{}", i), bool_to_field(bit_t, ctx.field()));
+                        let v = ctx.fresh(
+                            &format!("conv_bit{}", i),
+                            bool_to_field(bit_t, ctx.field()),
+                            false,
+                        );
                         ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
                         v
                     })
@@ -174,43 +177,39 @@ impl Encoding for Enc {
         }
     }
 
-    fn variable(ctx: &mut Ctx, name: &str, sort: &Sort, ty: Ty) -> Self {
-        assert_eq!(SortPat::from(sort), ty.sort());
+    fn variable(ctx: &mut Ctx, name: &str, sort: &Sort, public: bool) -> Self {
         let t = leaf_term(Op::Var(name.into(), sort.clone()));
-        match ty {
-            Ty::Bit => {
-                let v = ctx.fresh(name, bool_to_field(t, ctx.field()));
-                ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+        match sort {
+            Sort::Bool => {
+                let v = ctx.fresh(name, bool_to_field(t, ctx.field()), public);
+                if !public {
+                    ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                }
                 Enc::Bit(v)
             }
-            Ty::Bits => {
-                let w = sort.as_bv();
-                Enc::Bits(
-                    (0..w)
-                        .map(|i| {
-                            let bit_t = term![Op::BvBit(i); t.clone()];
-                            let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()));
-                            ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
-                            v
-                        })
-                        .collect(),
-                )
+            Sort::BitVector(w) => {
+                if public {
+                    let as_f = term![Op::UbvToPf(ctx.field().clone()); t];
+                    Enc::Uint(ctx.fresh(name, as_f, public), *w)
+                } else {
+                    Enc::Bits(
+                        (0..*w)
+                            .map(|i| {
+                                let bit_t = term![Op::BvBit(i); t.clone()];
+                                let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()), false);
+                                if !public {
+                                    ctx.assert(
+                                        term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()],
+                                    );
+                                }
+                                v
+                            })
+                            .collect(),
+                    )
+                }
             }
-            Ty::Uint => {
-                let w = sort.as_bv();
-                let bits: Vec<Term> = (0..w)
-                    .map(|i| {
-                        let bit_t = term![Op::BvBit(i); t.clone()];
-                        let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()));
-                        ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
-                        v
-                    })
-                    .collect();
-                let sum = term(PF_ADD, bits.iter().enumerate().map(|(i, f)|
-                        term![PF_MUL; pf_lit(ctx.field().new_v(Integer::from(1) << i)), f.clone()]).collect());
-                Enc::Uint(sum, w)
-            }
-            Ty::Field => Enc::Field(ctx.fresh(name, t)),
+            Sort::Field(_) => Enc::Field(ctx.fresh(name, t, public)),
+            _ => panic!(),
         }
     }
 
@@ -290,20 +289,16 @@ impl Encoding for Enc {
         }
     }
 
-    fn const_(f: &FieldT, const_t: &Term, ty: Self::Type) -> Self {
-        assert_eq!(SortPat::from(&check(const_t)), ty.sort());
-        match ty {
-            Ty::Bit => Enc::Bit(bool_to_field(const_t.clone(), f)),
-            Ty::Bits => Enc::Bits(
-                (0..check(const_t).as_bv())
+    fn const_(f: &FieldT, const_t: &Term) -> Self {
+        match check(const_t) {
+            Sort::Bool => Enc::Bit(bool_to_field(const_t.clone(), f)),
+            Sort::BitVector(w) => Enc::Bits(
+                (0..w)
                     .map(|i| bool_to_field(term![Op::BvBit(i); const_t.clone()], f))
                     .collect(),
             ),
-            Ty::Uint => Enc::Uint(
-                term![Op::UbvToPf(f.clone()); const_t.clone()],
-                check(const_t).as_bv(),
-            ),
-            Ty::Field => Enc::Field(const_t.clone()),
+            Sort::Field(_) => Enc::Field(const_t.clone()),
+            _ => panic!(),
         }
     }
 
@@ -336,8 +331,9 @@ fn is_zero(ctx: &mut Ctx, x: Term) -> Term {
     let m = ctx.fresh(
         "is_zero_inv",
         term![Op::Ite; eqz.clone(), ctx.zero().clone(), term![PF_RECIP; x.clone()]],
+        false,
     );
-    let is_zero = ctx.fresh("is_zero", bool_to_field(eqz, ctx.field()));
+    let is_zero = ctx.fresh("is_zero", bool_to_field(eqz, ctx.field()), false);
     ctx.assert(term![EQ; term![PF_MUL; m.clone(), x.clone()], bool_neg(is_zero.clone())]);
     ctx.assert(term![EQ; term![PF_MUL; is_zero.clone(), x], ctx.zero().clone()]);
     is_zero
@@ -355,6 +351,7 @@ fn bit_split(ctx: &mut Ctx, reason: &str, x: Term, n: usize) -> Vec<Term> {
                 // We get the right repr here because of infinite two's complement.
                 &format!("{}_bit{}", reason, i),
                 bool_to_field(term![Op::BvBit(i); x_bv.clone()], ctx.field()),
+                false,
             )
         })
         .collect();
@@ -645,8 +642,8 @@ fn pf_recip(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     // iz = 0
     let x = args[0].field();
     let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
-    let z = ctx.fresh("recip_z", bool_to_field(eqz, ctx.field()));
-    let i = ctx.fresh("recip_i", term![PF_RECIP; args[0].field()]);
+    let z = ctx.fresh("recip_z", bool_to_field(eqz, ctx.field()), false);
+    let i = ctx.fresh("recip_i", term![PF_RECIP; args[0].field()], false);
     ctx.assert(term![EQ; term![PF_MUL; x.clone(), i.clone()], bool_neg(z.clone())]);
     ctx.assert(term![EQ; term![PF_MUL; x.clone(), z.clone()], ctx.zero().clone()]);
     ctx.assert(term![EQ; term![PF_MUL; i.clone(), z.clone()], ctx.zero().clone()]);
@@ -831,8 +828,8 @@ fn ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
     let b_bv_term = term![Op::PfToBv(n); b.clone()];
     let q_term = term![Op::UbvToPf(ctx.field().clone()); term![BV_UDIV; a_bv_term.clone(), b_bv_term.clone()]];
     let r_term = term![Op::UbvToPf(ctx.field().clone()); term![BV_UREM; a_bv_term, b_bv_term]];
-    let q = ctx.fresh("div_q", q_term);
-    let r = ctx.fresh("div_r", r_term);
+    let q = ctx.fresh("div_q", q_term, false);
+    let r = ctx.fresh("div_r", r_term, false);
     let qb = bit_split(ctx, "div_q", q.clone(), n);
     let rb = bit_split(ctx, "div_r", r.clone(), n);
     // qb = a - r

@@ -13,7 +13,7 @@ use Prop::*;
 fn correct_precompute(c: &Ctx) -> Vec<Term> {
     c.new_variables
         .iter()
-        .map(|(val, name)| {
+        .map(|(val, name, _)| {
             let var = leaf_term(Op::Var(name.into(), check(val)));
             term![EQ; var, val.clone()]
         })
@@ -23,7 +23,7 @@ fn correct_precompute(c: &Ctx) -> Vec<Term> {
 /// Return the assertions of this [Ctx] with the precompute substituted in.
 fn precompute_sub(c: &Ctx) -> Vec<Term> {
     let mut subs: TermMap<Term> = Default::default();
-    for (val, name) in &c.new_variables {
+    for (val, name, _) in &c.new_variables {
         let val_s = extras::substitute_cache(&val, &mut subs);
         let sort = check(&val_s);
         let var = leaf_term(Op::Var(name.clone(), sort));
@@ -64,7 +64,7 @@ pub trait VerifiableEncoding: Encoding {
             .map(|sort| {
                 let mut ctx = Ctx::new(bnd.field.clone());
                 let name = "a".to_owned();
-                let e = Self::d_variable(&mut ctx, &name, &sort);
+                let e = Self::variable(&mut ctx, &name, &sort, false);
                 let var = leaf_term(Op::Var(name.clone(), sort.clone()));
                 let no_valid = term![NOT; term![Op::Quant(Quant {
                     ty: QuantType::Exists,
@@ -84,7 +84,7 @@ pub trait VerifiableEncoding: Encoding {
             .map(|sort| {
                 let mut ctx = Ctx::new(bnd.field.clone());
                 let name = "a".to_owned();
-                let _e = Self::d_variable(&mut ctx, &name, &sort);
+                let _e = Self::variable(&mut ctx, &name, &sort, false);
                 let mut assertions = Vec::new();
                 assertions.extend(correct_precompute(&ctx));
                 assertions.push(term![NOT; mk_and(ctx.assertions)]);
@@ -116,10 +116,11 @@ pub trait VerifiableEncoding: Encoding {
             .map(|(from, to, sort)| {
                 let mut ctx = Ctx::new(bnd.field.clone());
                 let name = "a".to_owned();
-                let e = Self::variable(&mut ctx, &name, &sort, from);
+                let e = Self::variable(&mut ctx, &name, &sort, false);
+                let e_from = e.convert(&mut ctx, from);
                 let var = leaf_term(Op::Var(name, sort.clone()));
                 ctx.assertions.extend(correct_precompute(&ctx));
-                let e2 = e.convert(&mut ctx, to);
+                let e2 = e_from.convert(&mut ctx, to);
                 let is_valid = e2.is_valid(var);
                 let mut assertions = ctx.assertions;
                 assertions.push(term![NOT; is_valid]);
@@ -138,8 +139,9 @@ pub trait VerifiableEncoding: Encoding {
             .map(|(from, to, sort)| {
                 let mut ctx = Ctx::new(bnd.field.clone());
                 let name = "a".to_owned();
-                let e = Self::variable(&mut ctx, &name, &sort, from);
-                let _e2 = e.convert(&mut ctx, to);
+                let e = Self::variable(&mut ctx, &name, &sort, false);
+                let e_from = e.convert(&mut ctx, from);
+                let _e2 = e_from.convert(&mut ctx, to);
                 let mut assertions = Vec::new();
                 assertions.extend(correct_precompute(&ctx));
                 assertions.push(term![NOT; mk_and(ctx.assertions)]);
@@ -185,9 +187,10 @@ pub trait VerifiableEncoding: Encoding {
                     .zip(&args)
                     .enumerate()
                     .map(|(i, ((name, sort), b))| {
-                        let e = Self::variable(&mut ctx, name, sort, rule.encoding_ty(i));
-                        assertions.push(e.is_valid(b.clone()));
-                        e
+                        let e = Self::variable(&mut ctx, name, sort, false);
+                        let e_from = e.convert(&mut ctx, rule.encoding_ty(i));
+                        assertions.push(e_from.is_valid(b.clone()));
+                        e_from
                     })
                     .collect();
 
@@ -226,7 +229,10 @@ pub trait VerifiableEncoding: Encoding {
                 let e_args: Vec<Self> = var_parts
                     .iter()
                     .enumerate()
-                    .map(|(i, (n, s))| Self::variable(&mut ctx, n, s, rule.encoding_ty(i)))
+                    .map(|(i, (n, s))| {
+                        let e = Self::variable(&mut ctx, n, s, false);
+                        e.convert(&mut ctx, rule.encoding_ty(i))
+                    })
                     .collect();
 
                 // we check encodings separately
@@ -257,7 +263,7 @@ pub trait VerifiableEncoding: Encoding {
             .map(|sort| {
                 let name = "a".to_owned();
                 let var = leaf_term(Op::Var(name.clone(), sort.clone()));
-                let e = Self::d_const_(&bnd.field, &var);
+                let e = Self::const_(&bnd.field, &var);
                 VerCond::new(Complete, RuleType::Const, term![NOT; e.is_valid(var)]).sort(&sort)
             })
             .collect()

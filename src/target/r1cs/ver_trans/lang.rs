@@ -9,6 +9,8 @@ use crate::ir::term::*;
 use circ_fields::FieldT;
 use rug::Integer;
 
+use log::debug;
+
 pub use super::ast::{OpPat, Pattern, SortPat};
 
 /// The type of an encoding.
@@ -29,41 +31,36 @@ pub trait EncodingType: Copy + Hash + Eq + Debug + Ord + 'static {
 pub trait Encoding: Clone + Debug {
     /// Types for this encoding.
     type Type: EncodingType;
+
     /// Get the type of this encoding.
     fn type_(&self) -> Self::Type;
+
     /// Output this encoding as a boolean term.
     fn as_bool_term(&self) -> Term;
+
     /// Assert this encoding equals another of the same type.
     fn assert_eq(&self, c: &mut Ctx, other: &Self);
+
     /// Convert this encoding to a new one of the same term.
     ///
     /// Will only be called with a type `to` whose sort agrees.
     ///
     /// Must return an encoding of the type `to`.
     fn convert(&self, c: &mut Ctx, to: Self::Type) -> Self;
+
     /// Embed a variable.
     ///
     /// Must return an `e` such that `e.type_()` is equal to `ty`.
-    fn variable(c: &mut Ctx, name: &str, sort: &Sort, ty: Self::Type) -> Self;
-    /// The above, but with the default encoding type.
-    fn d_variable(c: &mut Ctx, name: &str, sort: &Sort) -> Self {
-        let ty = <Self::Type as EncodingType>::default_for_sort(sort);
-        Self::variable(c, name, sort, ty)
-    }
+    fn variable(c: &mut Ctx, name: &str, sort: &Sort, trust: bool) -> Self;
+
     /// Return the list of all rules applicable to this encoding.
     fn rules() -> Vec<Rule<Self>>;
 
     /// Choose a rule for this term given these available encodings.
     fn choose(t: &Term, available_encs: &[&BTreeSet<Self::Type>]) -> usize;
 
-    /// Constant embedding.
-    fn const_(f: &FieldT, const_t: &Term, ty: Self::Type) -> Self;
-
     /// [Enconding::const_], but with the default encoding type.
-    fn d_const_(f: &FieldT, const_t: &Term) -> Self {
-        let ty = <Self::Type as EncodingType>::default_for_sort(&check(const_t));
-        Self::const_(f, const_t, ty)
-    }
+    fn const_(f: &FieldT, const_t: &Term) -> Self;
 
     /// Apply this function to all terms.
     fn map<F: Fn(Term) -> Term>(self, f: F) -> Self;
@@ -82,8 +79,8 @@ pub enum EncTypes<T: EncodingType> {
 pub struct Ctx {
     /// Assertions
     pub assertions: Vec<Term>,
-    /// New variables that we introduce
-    pub new_variables: Vec<(Term, String)>,
+    /// New variables that we introduce (value, name, is_public).
+    pub new_variables: Vec<(Term, String, bool)>,
     field: FieldT,
     zero: Term,
     one: Term,
@@ -103,10 +100,11 @@ impl Ctx {
     /// Given a value, construct a (fresh) variable meant to be set to this value and return it.
     ///
     /// The context is added to the variable name for debugging.
-    pub fn fresh(&mut self, ctx: &str, value: Term) -> Term {
+    pub fn fresh(&mut self, ctx: &str, value: Term, public: bool) -> Term {
         let i = self.new_variables.len();
         let name = format!("fresh_pf{}_{}", i, ctx);
-        self.new_variables.push((value, name.clone()));
+        debug!("fresh {} {}", name, public);
+        self.new_variables.push((value, name.clone(), public));
         leaf_term(Op::Var(name, Sort::Field(self.field.clone())))
     }
     /// add a new assertion

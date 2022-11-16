@@ -2114,13 +2114,13 @@ impl Computation {
     /// Add a new input `new_input_var` to this computation,
     /// whose value is determined by `precomp`: a term over existing inputs.
     ///
-    /// The visibility for `new_input_var` will be computed from the visibility of variables in
-    /// `precomp`: there must be at most **one** non-public variable.
+    /// If `vis` is set, then that will be the visibility of the new variables. Otherwise,
+    /// it will be infered from the visibility of the inputs to `precomp`.
     ///
     /// The sort for `new_input_var` will be computed from `precomp`.
-    pub fn extend_precomputation(&mut self, new_input_var: String, precomp: Term) {
-        debug!("Precompute {}", new_input_var);
-        let vis = {
+    pub fn extend_precomputation(&mut self, new_input_var: String, precomp: Term, vis: Option<Option<PartyId>>) {
+        debug!("Precompute {} {:?}", new_input_var, vis);
+        let vis = vis.unwrap_or_else(|| {
             let mut input_visiblities: FxHashSet<Option<PartyId>> =
                 extras::free_variables(precomp.clone())
                     .into_iter()
@@ -2132,7 +2132,8 @@ impl Computation {
                 1 => input_visiblities.into_iter().next().unwrap(),
                 _ => panic!("Precomputation for new var {} with term\n\t{}\ninvolves multiple input non-public visibilities:\n\t{:?}", new_input_var, precomp, input_visiblities),
             }
-        };
+        });
+        debug!("  vis: {:?}", vis);
         let sort = check(&precomp);
         self.new_var(&new_input_var, sort, vis, Some(precomp));
     }
