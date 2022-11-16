@@ -164,19 +164,6 @@ impl ToR1cs {
         bits
     }
 
-    /// Given wire `x`, returns whether `x` fits in `n` `signed` bits.
-    fn fits_in_bits<D: Display + ?Sized>(
-        &mut self,
-        d: &D,
-        x: &TermLc,
-        n: usize,
-        signed: bool,
-    ) -> TermLc {
-        let bits = self.decomp(d, x, n);
-        let sum = self.debitify(bits.iter().cloned(), signed);
-        self.are_equal(sum, x)
-    }
-
     /// Given a sequence of `bits`, returns a wire which represents their sum,
     /// `\sum_{i>0} b_i2^i`.
     ///
@@ -455,10 +442,13 @@ impl ToR1cs {
         }
     }
 
-    /// Returns whether `a - b` fits in `size` non-negative bits.
-    /// i.e. is in `{0, 1, ..., 2^n-1}`.
-    fn bv_ge(&mut self, a: TermLc, b: &TermLc, size: usize) -> TermLc {
-        self.fits_in_bits("ge", &(a - b), size, false)
+    /// Given a and b such that -2^n < a - b < 2^n, returns whether a >= b (or a > b if `strict` is
+    /// set).
+    fn bv_greater(&mut self, a: TermLc, b: TermLc, n: usize, strict: bool) -> TermLc {
+        let tweak = if strict { -1 } else { 0 };
+        let shift = self.r1cs.modulus.new_v(Integer::from(1) << n);
+        let sum = a - &b + &shift + tweak;
+        self.decomp("cmp", &sum, n + 1).pop().unwrap()
     }
 
     /// Returns whether `a` is (`strict`ly) (`signed`ly) greater than `b`.
@@ -474,8 +464,7 @@ impl ToR1cs {
         } else {
             self.get_bv_uint(b)
         };
-        // Use the fact: a > b <=> a - 1 >= b
-        self.bv_ge(if strict { a - 1 } else { a }, &b, w)
+        self.bv_greater(a, b, w, strict)
     }
 
     /// Shift `x` left by `2^y`, if bit-valued `c` is true.
@@ -669,7 +658,7 @@ impl ToR1cs {
                                 let qb = self.bitify("div_q", &q, n, false);
                                 let rb = self.bitify("div_r", &r, n, false);
                                 self.r1cs.constraint(q.1.clone(), b.1.clone(), (a - &r).1);
-                                let is_gt = self.bv_ge(b - 1, &r, n);
+                                let is_gt = self.bv_greater(b, r, n, true);
                                 let is_not_ge = self.bool_not(&is_gt);
                                 let is_not_zero = self.bool_not(&is_zero);
                                 self.r1cs
