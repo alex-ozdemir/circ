@@ -6,6 +6,8 @@ use crate::target::r1cs::{ProverData, R1cs, VerifierData};
 
 use circ_fields::FieldT;
 
+use log::trace;
+
 pub mod ast;
 pub mod lang;
 pub mod rules;
@@ -28,7 +30,9 @@ pub fn to_r1cs(mut cs: Computation, modulus: FieldT) -> (R1cs<String>, ProverDat
     if cs.outputs.len() > 1 {
         cs.outputs = vec![term(AND, cs.outputs)];
     }
+    trace!("Pre-lower: {}", text::pp_sexpr(text::serialize_term(&cs.outputs()[0]).as_bytes(), 120));
     let mut cs = apply(&modulus, cs);
+    trace!("Post-lower: {}", text::pp_sexpr(text::serialize_term(&cs.outputs()[0]).as_bytes(), 120));
     cs.precomputes.recompute_inputs();
     to_r1cs::to_r1cs(cs, modulus)
 }

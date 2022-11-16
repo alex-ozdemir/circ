@@ -119,6 +119,19 @@ impl Encoding for Enc {
         }
     }
 
+    fn assert_eq(&self, c: &mut Ctx, other: &Self) {
+        match self.type_() {
+            Ty::Bit => c.assert(term![EQ; self.bit(), other.bit()]),
+            Ty::Bits => {
+                for (l, r) in self.bits().iter().zip(other.bits()) {
+                    c.assert(term![EQ; l.clone(), r.clone()])
+                }
+            },
+            Ty::Uint => c.assert(term![EQ; self.uint().0, other.uint().0]),
+            Ty::Field => c.assert(term![EQ; self.field(), other.field()]),
+        }
+    }
+
     fn convert(&self, ctx: &mut Ctx, to: Self::Type) -> Self {
         match (self, to) {
             (Self::Bits(bs), Ty::Uint) => {

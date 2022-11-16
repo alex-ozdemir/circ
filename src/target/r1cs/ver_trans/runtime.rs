@@ -1,4 +1,4 @@
-use super::lang::{Encoding, Pattern, Ctx, Rule};
+use super::lang::{Ctx, Encoding, Pattern, Rule};
 use crate::ir::term::*;
 use circ_fields::FieldT;
 
@@ -49,6 +49,18 @@ impl<E: Encoding> Rewriter<E> {
             self.add(t.clone(), new_e);
         }
     }
+    fn assert(&mut self, c: &mut Ctx, t: Term) {
+        match &t.op {
+            Op::Eq => {
+                let ty = self.get_max_ty(&t.cs[0]).max(self.get_max_ty(&t.cs[1]));
+                self.get_enc(&t.cs[0], ty)
+                    .assert_eq(c, self.get_enc(&t.cs[1], ty))
+            }
+            _ => {
+                c.assert(self.get_enc(&t, self.get_max_ty(&t)).as_bool_term());
+            }
+        }
+    }
     fn visit(&mut self, c: &mut Ctx, t: Term) {
         let new = if let Op::Var(name, sort) = &t.op {
             E::d_variable(c, name, sort)
@@ -94,28 +106,28 @@ impl<E: Encoding> Rewriter<E> {
 }
 
 /// Apply some rules to translated a computation into a field.
-pub fn apply_rules<E: Encoding>(
-    field: FieldT,
-    mut computation: Computation,
-) -> Computation {
+pub fn apply_rules<E: Encoding>(field: FieldT, mut computation: Computation) -> Computation {
     // we're going to re-add all inputs.
     computation.metadata.computation_inputs.clear();
     assert!(computation.outputs.len() == 1);
+    let o = computation.outputs[0].clone();
     let mut rewriter = Rewriter::<E>::new();
+    let assertions: TermSet = match &o.op {
+        &AND => o.cs.iter().filter(|t| &t.op == &Op::Eq).cloned().collect(),
+        _ => std::iter::once(o.clone()).collect(),
+    };
+    let mut do_not_embed = assertions.clone();
+    if &o.op == &AND {
+        do_not_embed.insert(o);
+    }
     let mut ctx = Ctx::new(field.clone());
     for t in computation.terms_postorder() {
-        rewriter.visit(&mut ctx, t);
+        if !do_not_embed.contains(&t) {
+            rewriter.visit(&mut ctx, t);
+        }
     }
-    let o = &computation.outputs()[0];
-    // process top-level assertions separately.
-    let assertions = match &o.op {
-        &AND => o.cs.clone(),
-        _ => vec![o.clone()],
-    };
     for a in assertions {
-        let ty = rewriter.get_max_ty(&a);
-        let e = rewriter.get_enc(&a, ty);
-        ctx.assert(e.as_bool_term());
+        rewriter.assert(&mut ctx, a);
     }
     computation.outputs = vec![term(AND, ctx.assertions)];
     for (value, name) in ctx.new_variables {
