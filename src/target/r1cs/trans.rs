@@ -648,7 +648,6 @@ impl ToR1cs {
                                 self.set_bv_bits(bv, bits);
                             }
                             BvBinOp::Udiv | BvBinOp::Urem => {
-                                let is_zero = self.is_zero(b.clone());
                                 let a_bv_term = term![Op::PfToBv(n); a.0.clone()];
                                 let b_bv_term = term![Op::PfToBv(n); b.0.clone()];
                                 let q_term = term![Op::UbvToPf(self.field.clone()); term![BV_UDIV; a_bv_term.clone(), b_bv_term.clone()]];
@@ -658,11 +657,17 @@ impl ToR1cs {
                                 let qb = self.bitify("div_q", &q, n, false);
                                 let rb = self.bitify("div_r", &r, n, false);
                                 self.r1cs.constraint(q.1.clone(), b.1.clone(), (a - &r).1);
-                                let is_gt = self.bv_greater(b, r, n, true);
-                                let is_not_ge = self.bool_not(&is_gt);
-                                let is_not_zero = self.bool_not(&is_zero);
+                                // b == 0 -> q == M   //  b != 0 or q == M
+                                // b != 0 -> r < b    //  b == 0 or r < b
+                                // so, since we don't care about b == 0,
+                                // q == M or r < b
+                                // not(q != M and r >= b)
+                                let r_ge_b = self.bv_greater(r, b, n, false);
+                                let max = self.r1cs.modulus.new_v((Integer::from(1) << n) - 1);
+                                let q_eq_max = self.is_zero(q - &max);
+                                let q_ne_max = self.bool_not(&q_eq_max);
                                 self.r1cs
-                                    .constraint(is_not_ge.1, is_not_zero.1, self.r1cs.zero());
+                                    .constraint(r_ge_b.1, q_ne_max.1, self.r1cs.zero());
                                 let bits = match o {
                                     BvBinOp::Udiv => qb,
                                     BvBinOp::Urem => rb,

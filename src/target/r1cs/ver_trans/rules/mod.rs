@@ -823,7 +823,6 @@ fn bv_slt(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 //
 // if b = 0, r = a, q = MAX
 fn ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
-    let b_is_zero = is_zero(ctx, b.clone());
     let a_bv_term = term![Op::PfToBv(n); a.clone()];
     let b_bv_term = term![Op::PfToBv(n); b.clone()];
     let q_term = term![Op::UbvToPf(ctx.field().clone()); term![BV_UDIV; a_bv_term.clone(), b_bv_term.clone()]];
@@ -834,12 +833,16 @@ fn ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
     let rb = bit_split(ctx, "div_r", r.clone(), n);
     // qb = a - r
     ctx.assert(term![EQ; term![PF_MUL; q.clone(), b.clone()], pf_sub(a, r.clone())]);
+    // Now... r bounds and 0...
     // b = 0 -> q = MAX   :   b != 0 OR q = MAX   :  NOT (b = 0 AND q != MAX)
     // b != 0 -> r < b    :   b = 0  OR r < b     :  NOT (b != 0 AND r >= b)
+    //
+    // so, since we don't care about b == 0,
+    // q == MAX or r < b
+    // not(q != MAX and r >= b)
     let q_is_max = is_zero(ctx, pf_sub(q, ctx.f_const((Integer::from(1) << n) - 1)));
     let r_ge_b = bv_cmp(ctx, r, b, n, false);
-    ctx.assert(term![EQ; term![PF_MUL; b_is_zero.clone(), bool_neg(q_is_max)], ctx.zero().clone()]);
-    ctx.assert(term![EQ; term![PF_MUL; bool_neg(b_is_zero), r_ge_b], ctx.zero().clone()]);
+    ctx.assert(term![EQ; term![PF_MUL; bool_neg(q_is_max), r_ge_b], ctx.zero().clone()]);
     (qb, rb)
 }
 
