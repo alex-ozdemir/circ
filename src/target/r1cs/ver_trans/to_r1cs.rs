@@ -54,9 +54,15 @@ impl ToR1cs {
     /// Return the product of `a` and `b`.
     fn mul(&mut self, a: TermLc, b: TermLc) -> TermLc {
         let mul_val = term![PF_MUL; a.0, b.0];
-        let c = self.fresh_var("mul", mul_val, false);
-        self.r1cs.constraint(a.1, b.1, c.1.clone());
-        c
+        if let Some(c) = a.1.as_const() {
+            TermLc(mul_val, b.1 * c)
+        } else if let Some(c) = b.1.as_const() {
+            TermLc(mul_val, a.1 * c)
+        } else {
+            let c = self.fresh_var("mul", mul_val, false);
+            self.r1cs.constraint(a.1, b.1, c.1.clone());
+            c
+        }
     }
 
     fn get(&self, t: &Term) -> TermLc {
