@@ -1,0 +1,12 @@
+def rotr32<N>(u32 x) -> u32:
+    return (x >> N) | (x << (32 - N))
+
+def main(u32 e, u32 f, u32 g, u32 h, u32 k, u32 w) -> u32:
+    // ch := (e and f) xor ((not e) and g)
+    u32 ch = (e & f) ^ ((!e) & g)
+
+    // S1 := (e rightrotate 6) xor (e rightrotate 11) xor (e rightrotate 25)
+    u32 S1 = rotr32::<6>(e) ^ rotr32::<11>(e) ^ rotr32::<25>(e)
+    
+    // temp1 := h + S1 + ch + k + w
+    return h + S1 + ch + k + w
