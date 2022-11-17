@@ -154,7 +154,7 @@ impl Encoding for Enc {
                             bool_to_field(bit_t, ctx.field()),
                             false,
                         );
-                        ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                        ctx.assert_bit(v.clone());
                         v
                     })
                     .collect();
@@ -183,7 +183,7 @@ impl Encoding for Enc {
             Sort::Bool => {
                 let v = ctx.fresh(name, bool_to_field(t, ctx.field()), public);
                 if !public {
-                    ctx.assert(term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()]);
+                    ctx.assert_bit(v.clone());
                 }
                 Enc::Bit(v)
             }
@@ -198,9 +198,7 @@ impl Encoding for Enc {
                                 let bit_t = term![Op::BvBit(i); t.clone()];
                                 let v = ctx.fresh(name, bool_to_field(bit_t, ctx.field()), false);
                                 if !public {
-                                    ctx.assert(
-                                        term![EQ; term![PF_MUL; v.clone(), v.clone()], v.clone()],
-                                    );
+                                    ctx.assert_bit(v.clone());
                                 }
                                 v
                             })
@@ -280,9 +278,9 @@ impl Encoding for Enc {
         match &t.op {
             Op::BvUext(_) => {
                 if encs[0].contains(&Ty::Bits) {
-                    1
-                } else {
                     0
+                } else {
+                    1
                 }
             }
             o => panic!("Cannot choose for op {}", o),
@@ -340,7 +338,7 @@ fn is_zero(ctx: &mut Ctx, x: Term) -> Term {
 }
 
 fn ensure_bit(ctx: &mut Ctx, b: Term) {
-    ctx.assert(term![EQ; term![PF_MUL; sub_one(b.clone()), b], ctx.zero().clone()]);
+    ctx.assert_bit(b.clone());
 }
 
 fn bit_split(ctx: &mut Ctx, reason: &str, x: Term, n: usize) -> Vec<Term> {
@@ -447,11 +445,13 @@ fn xor_helper(ctx: &mut Ctx, mut args: Vec<Term>) -> Term {
         match args.len() {
             0 => break ctx.zero().clone(),
             1 => break args.pop().unwrap(),
-            2 => {
-                break term![PF_ADD;
-                    args[0].clone(),
-                    args[1].clone(),
-                    term![PF_NEG; term![PF_MUL; ctx.f_const(2), args[0].clone(), args[1].clone()]]]
+            2 | 3 => {
+                let a = args.pop().unwrap();
+                let b = args.pop().unwrap();
+                args.push(term![PF_ADD;
+                    a.clone(),
+                    b.clone(),
+                    term![PF_NEG; term![PF_MUL; ctx.f_const(2), a, b]]])
             }
             i => {
                 // assumes field is prime

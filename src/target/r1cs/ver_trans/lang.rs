@@ -9,8 +9,6 @@ use crate::ir::term::*;
 use circ_fields::FieldT;
 use rug::Integer;
 
-use log::debug;
-
 pub use super::ast::{OpPat, Pattern, SortPat};
 
 /// The type of an encoding.
@@ -103,7 +101,6 @@ impl Ctx {
     pub fn fresh(&mut self, ctx: &str, value: Term, public: bool) -> Term {
         let i = self.new_variables.len();
         let name = format!("fresh_pf{}_{}", i, ctx);
-        debug!("fresh {} {}", name, public);
         self.new_variables.push((value, name.clone(), public));
         leaf_term(Op::Var(name, Sort::Field(self.field.clone())))
     }
@@ -115,7 +112,7 @@ impl Ctx {
     pub fn field(&self) -> &FieldT {
         &self.field
     }
-    // TODO: split zero, one, f_const into extension trait.
+    // TODO: split zero, one, f_const, assert_bit into extension trait.
     /// 0 in the field
     pub fn zero(&self) -> &Term {
         &self.zero
@@ -127,6 +124,10 @@ impl Ctx {
     /// Create a new field constant
     pub fn f_const<I: Into<Integer>>(&self, i: I) -> Term {
         pf_lit(self.field().new_v(i.into()))
+    }
+    /// Bit-constraint
+    pub fn assert_bit(&mut self, t: Term) {
+        self.assert(term![EQ; term![PF_MUL; t.clone(), t.clone()], t.clone()]);
     }
 }
 

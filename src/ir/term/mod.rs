@@ -1866,6 +1866,14 @@ impl PostOrderIter<'static> {
             skip_if: None,
         }
     }
+    /// Make an iterator over all descendents of all of `roots`.
+    pub fn from_iter(roots: impl Iterator<Item = Term>) -> Self {
+        Self {
+            stack: roots.map(|r| (false, r)).collect(),
+            visited: TermSet::new(),
+            skip_if: None,
+        }
+    }
 }
 
 impl<'a> PostOrderIter<'a> {
@@ -2118,7 +2126,12 @@ impl Computation {
     /// it will be infered from the visibility of the inputs to `precomp`.
     ///
     /// The sort for `new_input_var` will be computed from `precomp`.
-    pub fn extend_precomputation(&mut self, new_input_var: String, precomp: Term, vis: Option<Option<PartyId>>) {
+    pub fn extend_precomputation(
+        &mut self,
+        new_input_var: String,
+        precomp: Term,
+        vis: Option<Option<PartyId>>,
+    ) {
         debug!("Precompute {} {:?}", new_input_var, vis);
         let vis = vis.unwrap_or_else(|| {
             let mut input_visiblities: FxHashSet<Option<PartyId>> =

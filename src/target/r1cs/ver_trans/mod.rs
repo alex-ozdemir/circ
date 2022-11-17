@@ -2,6 +2,7 @@
 
 use crate::ir::term::Computation;
 use crate::ir::term::*;
+//use crate::ir::opt::{cfold::fold, flat::flatten_nary_ops};
 use crate::target::r1cs::{ProverData, R1cs, VerifierData};
 
 use circ_fields::FieldT;
@@ -33,6 +34,7 @@ pub fn to_r1cs(mut cs: Computation, modulus: FieldT) -> (R1cs<String>, ProverDat
     trace!("Pre-lower: {}", text::pp_sexpr(text::serialize_term(&cs.outputs()[0]).as_bytes(), 120));
     trace!("Pre-lower: {}", text::pp_sexpr(format!("{}", cs.metadata).as_bytes(), 120));
     let mut cs = apply(&modulus, cs);
+    //cs.outputs[0] = fold(&flatten_nary_ops(fold(&cs.outputs[0], &[])), &[]);
     trace!("Post-lower: {}", text::pp_sexpr(text::serialize_term(&cs.outputs()[0]).as_bytes(), 120));
     cs.precomputes.recompute_inputs();
     to_r1cs::to_r1cs(cs, modulus)

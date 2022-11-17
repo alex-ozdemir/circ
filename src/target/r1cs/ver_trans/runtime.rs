@@ -5,6 +5,8 @@ use circ_fields::FieldT;
 use fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::BTreeSet;
 
+use log::debug;
+
 struct Rewriter<E: Encoding> {
     public_inputs: HashSet<String>,
     rules: HashMap<Pattern, Vec<Rule<E>>>,
@@ -105,6 +107,7 @@ impl<E: Encoding> Rewriter<E> {
                     .enumerate()
                     .map(|(i, ch)| self.get_enc(ch, r.encoding_ty(i)))
                     .collect();
+            debug!("rule: op {}, first arg: {:?}", &t.op, r.encoding_ty(0));
             let res = r.apply(c, &t.op, &args);
             self.rules = rules_table;
             res

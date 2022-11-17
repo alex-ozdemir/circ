@@ -17,6 +17,10 @@ struct ToR1cs {
     public_inputs: FxHashSet<String>,
     next_idx: usize,
     zero: TermLc,
+    to_bit_constrain: Vec<Term>,
+    to_assert_eq: Vec<Term>,
+    to_assert: Vec<Term>,
+    to_embed: Vec<Term>,
 }
 
 impl ToR1cs {
@@ -31,6 +35,10 @@ impl ToR1cs {
             public_inputs,
             next_idx: 0,
             zero,
+            to_bit_constrain: Vec::new(),
+            to_assert_eq: Vec::new(),
+            to_assert: Vec::new(),
+            to_embed: Vec::new(),
         }
     }
 
@@ -65,11 +73,14 @@ impl ToR1cs {
         }
     }
 
-    fn get(&self, t: &Term) -> TermLc {
-        self.cache.get(t).unwrap().clone()
+    fn get(&self, t: &Term) -> &TermLc {
+        self.cache.get(t).unwrap()
     }
 
-    fn embed(&mut self, t: &Term) {
+    fn embed(&mut self, t: Term) {
+        if self.cache.contains_key(&t) {
+            return
+        }
         let maybe_lc = match &t.op {
             Op::Var(name, Sort::Field(_)) => {
                 let public = self.public_inputs.contains(name);
@@ -80,7 +91,7 @@ impl ToR1cs {
                 self.r1cs.constant(r.as_ty_ref(&self.r1cs.modulus)),
             )),
             Op::PfNaryOp(o) => {
-                let args = t.cs.iter().map(|c| self.get(c));
+                let args = t.cs.iter().map(|c| self.get(c).clone());
                 Some(match o {
                     PfNaryOp::Add => args.fold(self.zero.clone(), |a, b| a + &b),
                     PfNaryOp::Mul => {
@@ -93,27 +104,58 @@ impl ToR1cs {
                     }
                 })
             }
-            Op::PfUnOp(PfUnOp::Neg) => Some(-self.get(&t.cs[0])),
-            &AND => None,
-            &EQ => {
-                let diff = self.get(&t.cs[0]) - &self.get(&t.cs[1]);
-                self.r1cs
-                    .constraint(self.r1cs.zero(), self.r1cs.zero(), diff.1);
-                None
-            }
+            Op::PfUnOp(PfUnOp::Neg) => Some(-self.get(&t.cs[0]).clone()),
             o => panic!("invalid op in to_r1cs: {}", o),
         };
         if let Some(lc) = maybe_lc {
-            self.cache.insert(t.clone(), lc);
+            self.cache.insert(t, lc);
+        }
+    }
+
+    fn collect_assertions(&mut self, t: &Term) {
+        match &t.op {
+            &AND => t.cs.iter().for_each(|c| self.collect_assertions(c)),
+            &EQ => {
+                if t.cs[0].op == PF_MUL
+                    && t.cs[0].cs[0] == t.cs[0].cs[1]
+                    && t.cs[0].cs[1] == t.cs[1]
+                {
+                    // bit-constraint case
+                    self.to_embed.push(t.cs[1].clone());
+                    self.to_bit_constrain.push(t.cs[1].clone());
+                } else {
+                    self.to_embed.extend(t.cs.iter().cloned());
+                    self.to_assert_eq.push(t.clone());
+                }
+            }
+            _ => {
+                self.to_embed.push(t.clone());
+                self.to_assert.push(t.clone());
+            }
         }
     }
 
     fn embed_all(&mut self, c: &Computation) {
-        for t in c.terms_postorder() {
-            if self.cache.contains_key(&t) {
-                continue;
-            }
-            self.embed(&t);
+        debug_assert_eq!(c.outputs().len(), 1);
+        self.collect_assertions(&c.outputs()[0]);
+        let to_embed = std::mem::take(&mut self.to_embed);
+        for t in PostOrderIter::from_iter(to_embed.into_iter()) {
+            self.embed(t);
+        }
+        for b in std::mem::take(&mut self.to_bit_constrain).into_iter() {
+            let lc = self.get(&b).1.clone();
+            let lc_sub1 = lc.clone() - &self.r1cs.modulus.new_v(1);
+            self.r1cs
+                .constraint(lc.clone(), lc_sub1, self.zero.1.clone());
+        }
+        for a in std::mem::take(&mut self.to_assert_eq).into_iter() {
+            debug_assert_eq!(a.op, EQ);
+            let d = self.get(&a.cs[0]).1.clone() - &self.get(&a.cs[1]).1;
+            self.r1cs.constraint(self.r1cs.zero(), self.r1cs.zero(), d);
+        }
+        for a in std::mem::take(&mut self.to_assert).into_iter() {
+            let d = self.get(&a.cs[0]).1.clone() - &self.r1cs.modulus.new_v(1);
+            self.r1cs.constraint(self.r1cs.zero(), self.r1cs.zero(), d);
         }
     }
 }
@@ -135,7 +177,7 @@ pub fn to_r1cs(mut cs: Computation, modulus: FieldT) -> (R1cs<String>, ProverDat
     debug!("declaring inputs");
     for i in metadata.public_inputs() {
         debug!("input {}", i);
-        converter.embed(&i);
+        converter.embed(i);
     }
     debug!("Printing assertions");
     converter.embed_all(&cs);
