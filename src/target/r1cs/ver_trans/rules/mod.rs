@@ -635,19 +635,39 @@ fn ubv_to_pf(_ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 }
 
 fn pf_recip(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
-    // Used to enforce ix = 1 (incomplete on x = 0)
-    // Now we enforce:
-    // xi = 1 - z
-    // xz = 0
-    // iz = 0
-    let x = args[0].field();
-    let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
-    let z = ctx.fresh("recip_z", bool_to_field(eqz, ctx.field()), false);
-    let i = ctx.fresh("recip_i", term![PF_RECIP; args[0].field()], false);
-    ctx.assert(term![EQ; term![PF_MUL; x.clone(), i.clone()], bool_neg(z.clone())]);
-    ctx.assert(term![EQ; term![PF_MUL; x.clone(), z.clone()], ctx.zero().clone()]);
-    ctx.assert(term![EQ; term![PF_MUL; i.clone(), z.clone()], ctx.zero().clone()]);
-    Enc::Field(i)
+    Enc::Field(match *super::super::RELAXATION {
+        crate::target::r1cs::Relaxation::Incomplete => {
+            // xi = 1
+            let x = args[0].field();
+            let i = ctx.fresh("recip_i", term![PF_RECIP; args[0].field()], false);
+            let t = term![EQ; term![PF_MUL; x.clone(), i.clone()], ctx.one().clone()];
+            ctx.assert(t);
+            i
+        }
+        crate::target::r1cs::Relaxation::NonDet => {
+            // xxi = x
+            let x = args[0].field();
+            let i = ctx.fresh("recip_i", term![PF_RECIP; args[0].field()], false);
+            let t = term![EQ; term![PF_MUL; x.clone(), x.clone(), i.clone()], x.clone()];
+            ctx.assert(t);
+            i
+        }
+        crate::target::r1cs::Relaxation::Det => {
+            // Used to enforce ix = 1 (incomplete on x = 0)
+            // Now we enforce:
+            // xi = 1 - z
+            // xz = 0
+            // iz = 0
+            let x = args[0].field();
+            let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
+            let z = ctx.fresh("recip_z", bool_to_field(eqz, ctx.field()), false);
+            let i = ctx.fresh("recip_i", term![PF_RECIP; args[0].field()], false);
+            ctx.assert(term![EQ; term![PF_MUL; x.clone(), i.clone()], bool_neg(z.clone())]);
+            ctx.assert(term![EQ; term![PF_MUL; x.clone(), z.clone()], ctx.zero().clone()]);
+            ctx.assert(term![EQ; term![PF_MUL; i.clone(), z.clone()], ctx.zero().clone()]);
+            i
+        }
+    })
 }
 
 fn pf_sub(a: Term, b: Term) -> Term {
