@@ -488,17 +488,40 @@ impl ToR1cs {
 
     /// Shift `x` left by `y`, filling the blank spots with bit-valued `ext_bit`.
     /// Returns a bit sequence.
+    ///
+    /// If `c` is true, returns bit sequence which is just a copy of `ext_bit`.
     fn shift_bv_bits(
         &mut self,
         x: TermLc,
         y: Vec<TermLc>,
         ext_bit: Option<TermLc>,
-        n: usize,
+        x_w: usize,
+        c: TermLc,
     ) -> Vec<TermLc> {
+        let y_w = y.len();
+        let mask: TermLc = match ext_bit.as_ref() {
+            Some(e) => e.clone() * &self.r1cs.modulus.new_v((1 << x_w) - 1),
+            None => self.zero.clone(),
+        };
         let s = self.shift_bv(x, y, ext_bit);
-        let mut bits = self.bitify("shift", &s, 2 * n - 1, false);
-        bits.truncate(n);
+        let masked_s = self.ite(c, mask, &s);
+        let mut bits = self.bitify("shift", &masked_s, (1 << y_w) + x_w - 1, false);
+        bits.truncate(x_w);
         bits
+    }
+
+    /// Given a shift amount expressed as a bit-sequence, splits that shift into low bits and high
+    /// bits. The number of low bits, `b`, is the minimum amount such that `data_w-1` is representable
+    /// in `b` bits. The rest of the bits (the high ones) are or'd together into a single bit that is
+    /// returned.
+    fn split_shift_amt(
+        &mut self,
+        data_w: usize,
+        mut shift_amt: Vec<TermLc>,
+    ) -> (TermLc, Vec<TermLc>) {
+        let b = bitsize(data_w - 1);
+        let some_high_bit = self.nary_or(shift_amt.drain(b..));
+        (some_high_bit, shift_amt)
     }
 
     fn embed_bv(&mut self, bv: Term) {
@@ -666,8 +689,7 @@ impl ToR1cs {
                                 let max = self.r1cs.modulus.new_v((Integer::from(1) << n) - 1);
                                 let q_eq_max = self.is_zero(q - &max);
                                 let q_ne_max = self.bool_not(&q_eq_max);
-                                self.r1cs
-                                    .constraint(r_ge_b.1, q_ne_max.1, self.r1cs.zero());
+                                self.r1cs.constraint(r_ge_b.1, q_ne_max.1, self.r1cs.zero());
                                 let bits = match o {
                                     BvBinOp::Udiv => qb,
                                     BvBinOp::Urem => rb,
@@ -677,15 +699,10 @@ impl ToR1cs {
                             }
                             // Shift cases
                             _ => {
-                                let r = b;
-                                let b = bitsize(n - 1);
-                                assert!(1 << b == n);
-                                let mut rb = self.get_bv_bits(&bv.cs[1]);
-                                rb.truncate(b);
-                                let sum = self.debitify(rb.clone().into_iter(), false);
-                                self.assert_zero(sum - &r);
+                                let rb = self.get_bv_bits(&bv.cs[1]);
+                                let (high, low) = self.split_shift_amt(n, rb);
                                 let bits = match o {
-                                    BvBinOp::Shl => self.shift_bv_bits(a, rb, None, n),
+                                    BvBinOp::Shl => self.shift_bv_bits(a, low, None, n, high),
                                     BvBinOp::Lshr | BvBinOp::Ashr => {
                                         let mut lb = self.get_bv_bits(&bv.cs[0]);
                                         lb.reverse();
@@ -694,7 +711,7 @@ impl ToR1cs {
                                             _ => None,
                                         };
                                         let l = self.debitify(lb.into_iter(), false);
-                                        let mut bits = self.shift_bv_bits(l, rb, ext_bit, n);
+                                        let mut bits = self.shift_bv_bits(l, low, ext_bit, n, high);
                                         bits.reverse();
                                         bits
                                     }

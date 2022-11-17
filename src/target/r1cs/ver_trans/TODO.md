@@ -1,5 +1,4 @@
 To do:
-* fix bugs in old pipeline
 * comparative compiler perf evaluation
 * test public vars
 
@@ -7,6 +6,7 @@ Deferred to do:
 * options system
 
 Done:
+* fix bugs in old pipeline
 * secret/public variables
 * dump VCs as benchmark sets
 * brute-force CirC-based solver
