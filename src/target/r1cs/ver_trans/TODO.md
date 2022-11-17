@@ -1,11 +1,11 @@
 To do:
 * comparative compiler perf evaluation
-* test public vars
 
 Deferred to do:
 * options system
 
 Done:
+* test public vars
 * fix bugs in old pipeline
 * secret/public variables
 * dump VCs as benchmark sets

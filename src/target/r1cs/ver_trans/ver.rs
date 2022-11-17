@@ -81,15 +81,19 @@ pub trait VerifiableEncoding: Encoding {
     fn complete_vars(bnd: &Bound) -> Vec<VerCond> {
         Self::sorts(bnd)
             .into_iter()
-            .map(|sort| {
-                let mut ctx = Ctx::new(bnd.field.clone());
-                let name = "a".to_owned();
-                let _e = Self::variable(&mut ctx, &name, &sort, false);
-                let mut assertions = Vec::new();
-                assertions.extend(correct_precompute(&ctx));
-                assertions.push(term![NOT; mk_and(ctx.assertions)]);
+            .flat_map(|sort| {
+                [false, true].iter().map(move |public| {
+                    let mut ctx = Ctx::new(bnd.field.clone());
+                    let name = "a".to_owned();
+                    let _e = Self::variable(&mut ctx, &name, &sort, *public);
+                    let mut assertions = Vec::new();
+                    assertions.extend(correct_precompute(&ctx));
+                    assertions.push(term![NOT; mk_and(ctx.assertions)]);
 
-                VerCond::new(Complete, RuleType::Conv, mk_and(assertions)).sort(&sort)
+                    VerCond::new(Complete, RuleType::Conv, mk_and(assertions))
+                        .sort(&sort)
+                        .public(*public)
+                })
             })
             .collect()
     }
@@ -346,6 +350,7 @@ const TAG_N_ARGS: &str = "n_args";
 const TAG_OP_PAT: &str = "op_pat";
 const TAG_FROM: &str = "from";
 const TAG_TO: &str = "to";
+const TAG_PUBLIC: &str = "public";
 
 /// All tags
 pub const TAGS: &[&str] = &[
@@ -359,6 +364,7 @@ pub const TAGS: &[&str] = &[
     TAG_OP_PAT,
     TAG_FROM,
     TAG_TO,
+    TAG_PUBLIC,
 ];
 
 impl VerCond {
@@ -410,6 +416,9 @@ impl VerCond {
     }
     fn to<T: EncodingType>(self, ty: T) -> Self {
         self.tag(TAG_TO, &format!("{:?}", ty))
+    }
+    fn public(self, public: bool) -> Self {
+        self.tag(TAG_PUBLIC, &format!("{}", public))
     }
 }
 
