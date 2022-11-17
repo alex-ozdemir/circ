@@ -146,7 +146,12 @@ fn as_linear_sub((a, b, c): &(Lc, Lc, Lc), public: &HashSet<usize>) -> Option<(u
             if !public.contains(i) {
                 let mut lc = c.clone();
                 let v = lc.monomials.remove(i).unwrap();
-                lc *= v.recip();
+                if v.is_one() {
+                } else if (-v.clone()).is_one() {
+                    lc *= -1;
+                } else {
+                    lc *= v.recip();
+                }
                 return Some((*i, -lc));
             }
         }
