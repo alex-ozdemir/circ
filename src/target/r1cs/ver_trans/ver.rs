@@ -57,6 +57,12 @@ pub trait VerifiableEncoding: Encoding {
             .collect()
     }
 
+    /// Get a variable encoded w/ a specific encoding type. Converts if needed.
+    fn variable_ty(c: &mut Ctx, name: &str, sort: &Sort, ty: Self::Type, public: bool) -> Self {
+        let e = Self::variable(c, name, sort, public);
+        e.convert(c, ty)
+    }
+
     /// Create formulas that are SAT iff some variable rule is unsound.
     fn sound_vars(bnd: &Bound) -> Vec<VerCond> {
         Self::sorts(bnd)
@@ -120,11 +126,10 @@ pub trait VerifiableEncoding: Encoding {
             .map(|(from, to, sort)| {
                 let mut ctx = Ctx::new(bnd.field.clone());
                 let name = "a".to_owned();
-                let e = Self::variable(&mut ctx, &name, &sort, false);
-                let e_from = e.convert(&mut ctx, from);
+                let e = Self::variable_ty(&mut ctx, &name, &sort, from, false);
                 let var = leaf_term(Op::Var(name, sort.clone()));
                 ctx.assertions.extend(correct_precompute(&ctx));
-                let e2 = e_from.convert(&mut ctx, to);
+                let e2 = e.convert(&mut ctx, to);
                 let is_valid = e2.is_valid(var);
                 let mut assertions = ctx.assertions;
                 assertions.push(term![NOT; is_valid]);
@@ -143,9 +148,8 @@ pub trait VerifiableEncoding: Encoding {
             .map(|(from, to, sort)| {
                 let mut ctx = Ctx::new(bnd.field.clone());
                 let name = "a".to_owned();
-                let e = Self::variable(&mut ctx, &name, &sort, false);
-                let e_from = e.convert(&mut ctx, from);
-                let _e2 = e_from.convert(&mut ctx, to);
+                let e = Self::variable_ty(&mut ctx, &name, &sort, from, false);
+                let _e2 = e.convert(&mut ctx, to);
                 let mut assertions = Vec::new();
                 assertions.extend(correct_precompute(&ctx));
                 assertions.push(term![NOT; mk_and(ctx.assertions)]);
@@ -175,31 +179,23 @@ pub trait VerifiableEncoding: Encoding {
         Self::cfgs(rule, bnd)
             .into_iter()
             .map(|(sort, op, arg_sorts)| {
-                let var_parts = gen_names(arg_sorts.clone());
+                let vars = gen_vars(arg_sorts.clone());
                 let mut assertions = Vec::new();
-
-                // create inputs
-                let args: Vec<Term> = var_parts
-                    .iter()
-                    .map(|(n, s)| leaf_term(Op::Var(n.clone(), s.clone())))
-                    .collect();
 
                 // validly encode them
                 let mut ctx = Ctx::new(bnd.field.clone());
-                let e_args: Vec<Self> = var_parts
+                let e_args: Vec<Self> = vars
                     .iter()
-                    .zip(&args)
                     .enumerate()
-                    .map(|(i, ((name, sort), b))| {
-                        let e = Self::variable(&mut ctx, name, sort, false);
-                        let e_from = e.convert(&mut ctx, rule.encoding_ty(i));
-                        assertions.push(e_from.is_valid(b.clone()));
-                        e_from
+                    .map(|(i, (name, sort, b))| {
+                        let e = Self::variable_ty(&mut ctx, name, sort, rule.encoding_ty(i), false);
+                        assertions.push(e.is_valid(b.clone()));
+                        e
                     })
                     .collect();
 
                 // apply the lowering rule
-                let t = term(op.clone(), args.clone());
+                let t = term(op.clone(), vars.iter().map(|(_, _, t)| t.clone()).collect());
                 let e_t = rule.apply(&mut ctx, &t.op, &e_args.iter().collect::<Vec<_>>());
                 assertions.extend(ctx.assertions); // save the assertions
 
@@ -219,23 +215,16 @@ pub trait VerifiableEncoding: Encoding {
         Self::cfgs(rule, bnd)
             .into_iter()
             .map(|(sort, op, arg_sorts)| {
-                let var_parts = gen_names(arg_sorts.clone());
+                let vars = gen_vars(arg_sorts.clone());
                 let mut assertions = Vec::new();
-
-                // create inputs
-                let args: Vec<Term> = var_parts
-                    .iter()
-                    .map(|(n, s)| leaf_term(Op::Var(n.clone(), s.clone())))
-                    .collect();
 
                 // encode them
                 let mut ctx = Ctx::new(bnd.field.clone());
-                let e_args: Vec<Self> = var_parts
+                let e_args: Vec<Self> = vars
                     .iter()
                     .enumerate()
-                    .map(|(i, (n, s))| {
-                        let e = Self::variable(&mut ctx, n, s, false);
-                        e.convert(&mut ctx, rule.encoding_ty(i))
+                    .map(|(i, (n, s, _))| {
+                        Self::variable_ty(&mut ctx, n, s, rule.encoding_ty(i), false)
                     })
                     .collect();
 
@@ -243,7 +232,7 @@ pub trait VerifiableEncoding: Encoding {
                 ctx.assertions.clear();
 
                 // apply the lowering rule
-                let t = term(op.clone(), args.clone());
+                let t = term(op.clone(), vars.iter().map(|(_, _, t)| t.clone()).collect());
                 let _e_t = rule.apply(&mut ctx, &t.op, &e_args.iter().collect::<Vec<_>>());
 
                 // assert the pre-compute is correct, through substitution
@@ -261,7 +250,7 @@ pub trait VerifiableEncoding: Encoding {
     }
 
     /// Create formulas that are SAT iff some const encoding rule is incorrect.
-    fn correct_consts(bnd: &Bound) -> Vec<VerCond> {
+    fn complete_consts(bnd: &Bound) -> Vec<VerCond> {
         Self::sorts(bnd)
             .into_iter()
             .map(|sort| {
@@ -276,7 +265,7 @@ pub trait VerifiableEncoding: Encoding {
     /// Generate ALL verification conditions
     fn all_vcs(bnd: &Bound) -> Vec<VerCond> {
         std::iter::empty()
-            .chain(Self::correct_consts(bnd))
+            .chain(Self::complete_consts(bnd))
             .chain(Self::sound_vars(bnd))
             .chain(Self::complete_vars(bnd))
             .chain(Self::sound_convs(bnd))
@@ -311,6 +300,8 @@ pub enum RuleType {
     Op,
     /// conversion
     Conv,
+    /// equality assertion
+    Eq,
 }
 
 /// A bound for verification
@@ -497,22 +488,16 @@ fn arg_sorts(o: &Op, s: &Sort, bnd: &Bound) -> Vec<Vec<Sort>> {
     }
 }
 
-/// Generate names for some sorts
-fn gen_names(sorts: Vec<Sort>) -> Vec<(String, Sort)> {
-    fn nth_name(mut n: usize) -> String {
-        let mut o = String::new();
-        loop {
-            o.push((b'a' + (n % 26) as u8) as char);
-            n /= 26;
-            if n == 0 {
-                return o;
-            }
-        }
+/// Generate variables of sorts
+fn gen_vars(sorts: Vec<Sort>) -> Vec<(String, Sort, Term)> {
+    fn nth_name(n: usize) -> String {
+        assert!(n < 26);
+        "abcdefghijklmnopqrst"[n..n + 1].into()
     }
     sorts
         .into_iter()
         .enumerate()
-        .map(|(i, s)| (nth_name(i), s))
+        .map(|(i, s)| (nth_name(i), s.clone(), leaf_term(Op::Var(nth_name(i), s))))
         .collect()
 }
 
