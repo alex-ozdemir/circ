@@ -37,19 +37,15 @@ trait CtxExt {
 }
 
 impl CtxExt for Ctx {
-    /// 0 in the field
     fn zero(&self) -> Term {
         self.f_const(0)
     }
-    /// 1 in the field
     fn one(&self) -> Term {
         self.f_const(1)
     }
-    /// Create a new field constant
     fn f_const<I: Into<Integer>>(&self, i: I) -> Term {
         pf_lit(self.field().new_v(i.into()))
     }
-    /// Bit-constraint
     fn assert_bit(&mut self, t: Term) {
         self.assert(term![EQ; term![PF_MUL; t.clone(), t.clone()], t.clone()]);
     }
