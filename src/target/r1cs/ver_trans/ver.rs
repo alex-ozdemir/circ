@@ -1,10 +1,9 @@
 //! Verification machinery
-#![allow(unused_imports)]
 use super::lang::{Ctx, Encoding, EncodingType, OpPat, Rule, SortPat};
 use crate::ir::term::*;
 use circ_fields::FieldT;
-use fxhash::{FxHashMap, FxHashSet};
-use std::collections::{BTreeSet, BinaryHeap};
+use fxhash::FxHashMap;
+use std::collections::BTreeSet;
 use std::iter::repeat;
 
 use Prop::*;
@@ -262,6 +261,64 @@ pub trait VerifiableEncoding: Encoding {
             .collect()
     }
 
+    /// List valid conversions
+    fn sort_ty_pairs(bnd: &Bound) -> Vec<(Sort, Self::Type)> {
+        let mut out = Vec::new();
+        for ty in <Self::Type as EncodingType>::all() {
+            for sort in sorts(&ty.sort(), bnd) {
+                out.push((sort, ty));
+            }
+        }
+        out
+    }
+
+    /// Embed and create variable
+    fn wit_var(c: &mut Ctx, name: &str, sort: &Sort, ty: Self::Type, valid: bool) -> (Self, Term) {
+        let e = Self::variable_ty(c, &name, sort, ty, false);
+        let var = leaf_term(Op::Var(name.into(), sort.clone()));
+        if valid {
+            c.assert(e.is_valid(var.clone()));
+        }
+        (e, var)
+    }
+
+    /// Create formulas that are SAT iff some eq assertion rule is unsound.
+    fn complete_eqs(bnd: &Bound) -> Vec<VerCond> {
+        Self::sort_ty_pairs(bnd)
+            .into_iter()
+            .map(|(sort, ty)| {
+                let mut ctx = Ctx::new(bnd.field.clone());
+                let mut assertions = Vec::new();
+                let (a_enc, a_term) = Self::wit_var(&mut ctx, "a", &sort, ty, false);
+                let (b_enc, b_term) = Self::wit_var(&mut ctx, "b", &sort, ty, false);
+                ctx.assertions.clear();
+                a_enc.assert_eq(&mut ctx, &b_enc);
+                assertions.push(term![NOT; mk_and(precompute_sub(&ctx))]);
+                assertions.push(term![EQ; a_term, b_term]);
+                VerCond::new(Complete, RuleType::Eq, mk_and(assertions))
+                    .sort(&sort)
+                    .from(ty)
+            })
+            .collect()
+    }
+
+    /// Create formulas that are SAT iff some eq assertion rule is incomplete.
+    fn sound_eqs(bnd: &Bound) -> Vec<VerCond> {
+        Self::sort_ty_pairs(bnd)
+            .into_iter()
+            .map(|(sort, ty)| {
+                let mut ctx = Ctx::new(bnd.field.clone());
+                let (a_enc, a_term) = Self::wit_var(&mut ctx, "a", &sort, ty, true);
+                let (b_enc, b_term) = Self::wit_var(&mut ctx, "b", &sort, ty, true);
+                a_enc.assert_eq(&mut ctx, &b_enc);
+                ctx.assert(term![NOT; term![EQ; a_term, b_term]]);
+                VerCond::new(Sound, RuleType::Eq, mk_and(ctx.assertions))
+                    .sort(&sort)
+                    .from(ty)
+            })
+            .collect()
+    }
+
     /// Generate ALL verification conditions
     fn all_vcs(bnd: &Bound) -> Vec<VerCond> {
         std::iter::empty()
@@ -275,6 +332,8 @@ pub trait VerifiableEncoding: Encoding {
                     .chain(Self::sound_ops(rule, bnd))
                     .chain(Self::complete_ops(rule, bnd))
             }))
+            .chain(Self::sound_eqs(bnd))
+            .chain(Self::complete_eqs(bnd))
             .map(VerCond::complete)
             .collect()
     }
