@@ -21,8 +21,6 @@ pub trait EncodingType: Copy + Hash + Eq + Debug + Ord + 'static {
     fn sort(&self) -> SortPat;
     /// A list of all encoding types.
     fn all() -> Vec<Self>;
-    /// Get the default type for a variable.
-    fn default_for_sort(s: &Sort) -> Self;
 }
 
 /// The encoding itself.

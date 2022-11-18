@@ -50,15 +50,6 @@ impl EncodingType for Ty {
     fn all() -> Vec<Self> {
         vec![Self::Bit, Self::Bits, Self::Uint, Self::Field]
     }
-
-    fn default_for_sort(s: &Sort) -> Self {
-        match s {
-            Sort::Bool => Ty::Bit,
-            Sort::Field(_) => Ty::Field,
-            Sort::BitVector(_) => Ty::Bits,
-            _ => unimplemented!(),
-        }
-    }
 }
 
 impl Enc {
