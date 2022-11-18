@@ -24,6 +24,37 @@ pub enum Enc {
     Field(Term),
 }
 
+/// Extra methods for [Ctx]
+trait CtxExt {
+    /// 0 in the field
+    fn zero(&self) -> Term;
+    /// 1 in the field
+    fn one(&self) -> Term;
+    /// Create a new field constant
+    fn f_const<I: Into<Integer>>(&self, i: I) -> Term;
+    /// Bit-constraint
+    fn assert_bit(&mut self, t: Term);
+}
+
+impl CtxExt for Ctx {
+    /// 0 in the field
+    fn zero(&self) -> Term {
+        self.f_const(0)
+    }
+    /// 1 in the field
+    fn one(&self) -> Term {
+        self.f_const(1)
+    }
+    /// Create a new field constant
+    fn f_const<I: Into<Integer>>(&self, i: I) -> Term {
+        pf_lit(self.field().new_v(i.into()))
+    }
+    /// Bit-constraint
+    fn assert_bit(&mut self, t: Term) {
+        self.assert(term![EQ; term![PF_MUL; t.clone(), t.clone()], t.clone()]);
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 /// Types of encodings, see [Enc].
 pub enum Ty {
@@ -306,17 +337,17 @@ fn bool_to_field(t: Term, f: &FieldT) -> Term {
 }
 
 fn is_zero(ctx: &mut Ctx, x: Term) -> Term {
-    let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
+    let eqz = term![Op::Eq; x.clone(), ctx.zero()];
     // is_zero_inv * x == 1 - is_zero
     // is_zero * x == 0
     let m = ctx.fresh(
         "is_zero_inv",
-        term![Op::Ite; eqz.clone(), ctx.zero().clone(), term![PF_RECIP; x.clone()]],
+        term![Op::Ite; eqz.clone(), ctx.zero(), term![PF_RECIP; x.clone()]],
         false,
     );
     let is_zero = ctx.fresh("is_zero", bool_to_field(eqz, ctx.field()), false);
     ctx.assert(term![EQ; term![PF_MUL; m.clone(), x.clone()], bool_neg(is_zero.clone())]);
-    ctx.assert(term![EQ; term![PF_MUL; is_zero.clone(), x], ctx.zero().clone()]);
+    ctx.assert(term![EQ; term![PF_MUL; is_zero.clone(), x], ctx.zero()]);
     is_zero
 }
 
@@ -378,7 +409,7 @@ fn sign_bit_join(f: &FieldT, bits: &[Term]) -> Term {
 fn or_helper(ctx: &mut Ctx, mut args: Vec<Term>) -> Term {
     loop {
         match args.len() {
-            0 => return ctx.zero().clone(),
+            0 => return ctx.zero(),
             1 => return args.pop().unwrap(),
             2 => {
                 return bool_neg(
@@ -413,7 +444,7 @@ fn and(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 
 fn bool_eq(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bit(term![PF_ADD;
-        ctx.one().clone(),
+        ctx.one(),
         term![PF_NEG; args[0].bit()],
         term![PF_NEG; args[1].bit()],
         term![PF_MUL; ctx.f_const(2), args[0].bit(), args[1].bit()]])
@@ -426,7 +457,7 @@ fn xor(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
 fn xor_helper(ctx: &mut Ctx, mut args: Vec<Term>) -> Term {
     loop {
         match args.len() {
-            0 => break ctx.zero().clone(),
+            0 => break ctx.zero(),
             1 => break args.pop().unwrap(),
             2 | 3 => {
                 let a = args.pop().unwrap();
@@ -521,7 +552,7 @@ fn bv_uext_bits(ctx: &mut Ctx, op: &Op, args: &[&Enc]) -> Enc {
                 .bits()
                 .into_iter()
                 .cloned()
-                .chain(std::iter::repeat(ctx.zero().clone()).take(*n))
+                .chain(std::iter::repeat(ctx.zero()).take(*n))
                 .collect(),
         ),
         _ => panic!(),
@@ -623,7 +654,7 @@ fn pf_recip(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
             // xi = 1
             let x = args[0].field();
             let i = ctx.fresh("recip_i", term![PF_RECIP; args[0].field()], false);
-            let t = term![EQ; term![PF_MUL; x.clone(), i.clone()], ctx.one().clone()];
+            let t = term![EQ; term![PF_MUL; x.clone(), i.clone()], ctx.one()];
             ctx.assert(t);
             i
         }
@@ -642,12 +673,12 @@ fn pf_recip(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
             // xz = 0
             // iz = 0
             let x = args[0].field();
-            let eqz = term![Op::Eq; x.clone(), ctx.zero().clone()];
+            let eqz = term![Op::Eq; x.clone(), ctx.zero()];
             let z = ctx.fresh("recip_z", bool_to_field(eqz, ctx.field()), false);
             let i = ctx.fresh("recip_i", term![PF_RECIP; args[0].field()], false);
             ctx.assert(term![EQ; term![PF_MUL; x.clone(), i.clone()], bool_neg(z.clone())]);
-            ctx.assert(term![EQ; term![PF_MUL; x.clone(), z.clone()], ctx.zero().clone()]);
-            ctx.assert(term![EQ; term![PF_MUL; i.clone(), z.clone()], ctx.zero().clone()]);
+            ctx.assert(term![EQ; term![PF_MUL; x.clone(), z.clone()], ctx.zero()]);
+            ctx.assert(term![EQ; term![PF_MUL; i.clone(), z.clone()], ctx.zero()]);
             i
         }
     })
@@ -682,7 +713,7 @@ fn bv_mul(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
             args.len() * w,
         )
     } else {
-        let p = args.iter().fold(ctx.one().clone(), |acc, v| {
+        let p = args.iter().fold(ctx.one(), |acc, v| {
             let p = term![PF_MUL; acc, v.uint().0];
             let mut bits = bit_split(ctx, "binMul", p, 2 * w);
             bits.truncate(w);
@@ -845,7 +876,7 @@ fn ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
     // not(q != MAX and r >= b)
     let q_is_max = is_zero(ctx, pf_sub(q, ctx.f_const((Integer::from(1) << n) - 1)));
     let r_ge_b = bv_cmp(ctx, r, b, n, false);
-    ctx.assert(term![EQ; term![PF_MUL; bool_neg(q_is_max), r_ge_b], ctx.zero().clone()]);
+    ctx.assert(term![EQ; term![PF_MUL; bool_neg(q_is_max), r_ge_b], ctx.zero()]);
     (qb, rb)
 }
 
@@ -891,7 +922,7 @@ fn shift_bv_bits(
     let y_w = y.len();
     let mask = match ext_bit.as_ref() {
         Some(e) => term![PF_MUL; e.clone(), ctx.f_const((1 << x_w) - 1)],
-        None => ctx.zero().clone(),
+        None => ctx.zero(),
     };
     let s = shift_bv(ctx, x, y, ext_bit);
     let masked_s = ite(c, mask, s);

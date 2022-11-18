@@ -7,7 +7,6 @@ use std::hash::Hash;
 
 use crate::ir::term::*;
 use circ_fields::FieldT;
-use rug::Integer;
 
 pub use super::ast::{OpPat, Pattern, SortPat};
 
@@ -44,12 +43,14 @@ pub trait Encoding: Clone + Debug {
     /// Embed a variable.
     ///
     /// Must return an `e` such that `e.type_()` is equal to `ty`.
-    fn variable(c: &mut Ctx, name: &str, sort: &Sort, trust: bool) -> Self;
+    fn variable(c: &mut Ctx, name: &str, sort: &Sort, public: bool) -> Self;
 
     /// Return the list of all rules applicable to this encoding.
     fn rules() -> Vec<Rule<Self>>;
 
     /// Choose a rule for this term given these available encodings.
+    ///
+    /// Returns a rule id.
     fn choose(t: &Term, available_encs: &[&BTreeSet<Self::Type>]) -> usize;
 
     /// [Enconding::const_], but with the default encoding type.
@@ -75,8 +76,6 @@ pub struct Ctx {
     /// New variables that we introduce (value, name, is_public).
     pub new_variables: Vec<(Term, String, bool)>,
     field: FieldT,
-    zero: Term,
-    one: Term,
 }
 
 impl Ctx {
@@ -84,8 +83,6 @@ impl Ctx {
     pub fn new(field: FieldT) -> Self {
         Self {
             assertions: Vec::new(),
-            zero: pf_lit(field.new_v(0)),
-            one: pf_lit(field.new_v(1)),
             field,
             new_variables: Vec::new(),
         }
@@ -106,23 +103,6 @@ impl Ctx {
     /// the field
     pub fn field(&self) -> &FieldT {
         &self.field
-    }
-    // TODO: split zero, one, f_const, assert_bit into extension trait.
-    /// 0 in the field
-    pub fn zero(&self) -> &Term {
-        &self.zero
-    }
-    /// 1 in the field
-    pub fn one(&self) -> &Term {
-        &self.one
-    }
-    /// Create a new field constant
-    pub fn f_const<I: Into<Integer>>(&self, i: I) -> Term {
-        pf_lit(self.field().new_v(i.into()))
-    }
-    /// Bit-constraint
-    pub fn assert_bit(&mut self, t: Term) {
-        self.assert(term![EQ; term![PF_MUL; t.clone(), t.clone()], t.clone()]);
     }
 }
 
