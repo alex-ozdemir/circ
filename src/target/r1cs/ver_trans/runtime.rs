@@ -64,7 +64,9 @@ impl<E: Encoding> Rewriter<E> {
             }
             _ => {
                 self.visit(c, t.clone());
-                c.assert(self.get_enc(&t, self.get_max_ty(&t)).as_bool_term());
+                let ty = self.get_max_ty(&t);
+                let e_true = E::const_(c.field(), &bool_lit(true)).convert(c, ty);
+                self.get_enc(&t, ty).assert_eq(c, &e_true)
             }
         }
     }

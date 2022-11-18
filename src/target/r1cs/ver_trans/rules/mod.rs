@@ -111,14 +111,6 @@ impl Encoding for Enc {
         }
     }
 
-    fn as_bool_term(&self) -> Term {
-        if let Enc::Bit(b) = self {
-            term![EQ; b.clone(), pf_lit(check(b).as_pf().new_v(1))]
-        } else {
-            panic!("Cannot output encoding {:?}", self);
-        }
-    }
-
     fn assert_eq(&self, c: &mut Ctx, other: &Self) {
         match self.type_() {
             Ty::Bit => c.assert(term![EQ; self.bit(), other.bit()]),

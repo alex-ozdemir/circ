@@ -33,9 +33,6 @@ pub trait Encoding: Clone + Debug {
     /// Get the type of this encoding.
     fn type_(&self) -> Self::Type;
 
-    /// Output this encoding as a boolean term.
-    fn as_bool_term(&self) -> Term;
-
     /// Assert this encoding equals another of the same type.
     fn assert_eq(&self, c: &mut Ctx, other: &Self);
 

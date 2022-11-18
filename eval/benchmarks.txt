@@ -21,7 +21,6 @@
 ../third_party/ZoKrates/zokrates_stdlib/stdlib/hashes/sha256/embed/IVconstants.zok
 ../third_party/ZoKrates/zokrates_stdlib/stdlib/hashes/sha256/shaRound.zok
 ../third_party/ZoKrates/zokrates_stdlib/stdlib/hashes/utils/256bitsDirectionHelper.zok
-../third_party/ZoKrates/zokrates_stdlib/stdlib/signatures/verifyEddsa.zok
 ../third_party/ZoKrates/zokrates_stdlib/stdlib/utils/casts/bool_128_to_u32_4.zok
 ../third_party/ZoKrates/zokrates_stdlib/stdlib/utils/casts/bool_256_to_u32_8.zok
 ../third_party/ZoKrates/zokrates_stdlib/stdlib/utils/casts/field_to_u16.zok
