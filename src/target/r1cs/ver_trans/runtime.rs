@@ -66,7 +66,8 @@ impl<E: Encoding> Rewriter<E> {
                 self.visit(c, t.clone());
                 let ty = self.get_max_ty(&t);
                 let e_true = E::const_(c.field(), &bool_lit(true)).convert(c, ty);
-                self.get_enc(&t, ty).assert_eq(c, &e_true)
+                let e_true_c = e_true.map(|t| leaf_term(Op::Const(eval(&t, &Default::default()))));
+                self.get_enc(&t, ty).assert_eq(c, &e_true_c)
             }
         }
     }
@@ -79,11 +80,7 @@ impl<E: Encoding> Rewriter<E> {
         } else if let Op::Const(_) = &t.op {
             let t_const = E::const_(c.field(), &t);
             // fold the constant encoding
-            t_const.map(|t| {
-                let c = crate::ir::opt::cfold::fold(&t, &[]);
-                assert!(c.is_const(), "{:?} is not a constant", t);
-                c
-            })
+            t_const.map(|t| leaf_term(Op::Const(eval(&t, &Default::default()))))
         } else {
             let p = Pattern::from(&t);
             let rules_table = std::mem::take(&mut self.rules);
