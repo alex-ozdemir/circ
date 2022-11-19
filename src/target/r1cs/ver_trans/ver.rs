@@ -5,33 +5,63 @@ use circ_fields::FieldT;
 use fxhash::FxHashMap;
 use std::collections::BTreeSet;
 use std::iter::repeat;
+use std::marker::PhantomData;
+use std::mem::take;
 
 use Prop::*;
 
-/// Terms that assert the precomputation for a [Ctx] was correct.
-fn correct_precompute(c: &Ctx) -> Vec<Term> {
-    c.new_variables
-        .iter()
-        .map(|(val, name, _)| {
-            let var = leaf_term(Op::Var(name.into(), check(val)));
-            term![EQ; var, val.clone()]
-        })
-        .collect()
+struct Builder<E> {
+    ctx: Ctx,
+    subs: TermMap<Term>,
+    _phant: PhantomData<E>,
 }
 
-/// Return the assertions of this [Ctx] with the precompute substituted in.
-fn precompute_sub(c: &Ctx) -> Vec<Term> {
-    let mut subs: TermMap<Term> = Default::default();
-    for (val, name, _) in &c.new_variables {
-        let val_s = extras::substitute_cache(&val, &mut subs);
-        let sort = check(&val_s);
-        let var = leaf_term(Op::Var(name.clone(), sort));
-        assert!(subs.insert(var, val_s).is_none());
+impl<E: VerifiableEncoding> Builder<E> {
+    fn new(f: &FieldT) -> Self {
+        Self {
+            ctx: Ctx::new(f.clone()),
+            subs: Default::default(),
+            _phant: Default::default(),
+        }
     }
-    c.assertions
-        .iter()
-        .map(|a| extras::substitute_cache(a, &mut subs))
-        .collect()
+
+    /// Encode a new variable `(name, sort)` as `ty`. Pass `public` through.
+    ///
+    /// If no `ty` is given, the default is used.
+    ///
+    /// Returns (encoding, var term, is valid, assertions)
+    fn new_enc(
+        &mut self,
+        name: &str,
+        sort: &Sort,
+        ty: Option<E::Type>,
+        public: bool,
+    ) -> (E, Term, Term, Term) {
+        assert!(self.ctx.assertions.is_empty());
+        let mut e = E::variable(&mut self.ctx, name, sort, public);
+        let var = leaf_term(Op::Var(name.into(), sort.clone()));
+        if let Some(ty) = ty {
+            e = e.convert(&mut self.ctx, ty);
+        }
+        let is_valid = e.is_valid(var.clone());
+        (e, var, is_valid, mk_and(take(&mut self.ctx.assertions)))
+    }
+
+    fn assertions<T, F: FnOnce(&mut Ctx) -> T>(&mut self, f: F) -> (Term, T) {
+        assert!(self.ctx.assertions.is_empty());
+        let t = f(&mut self.ctx);
+        (mk_and(take(&mut self.ctx.assertions)), t)
+    }
+
+    fn sub(&mut self, t: &Term) -> Term {
+        for (val, name, _) in take(&mut self.ctx.new_variables) {
+            let val_s = extras::substitute_cache(&val, &mut self.subs);
+            let sort = check(&val_s);
+            let var = leaf_term(Op::Var(name.clone(), sort));
+            assert!(self.subs.insert(var, val_s).is_none());
+        }
+        extras::substitute_cache(t, &mut self.subs)
+    }
 }
 
 /// An encoding scheme with formalized semantics.
@@ -63,39 +93,31 @@ pub trait VerifiableEncoding: Encoding {
     }
 
     /// Create formulas that are SAT iff some variable rule is unsound.
-    fn sound_vars(bnd: &Bound) -> Vec<VerCond> {
+    fn sound_vars(bnd: &Bound) -> Vec<Vc> {
         Self::sorts(bnd)
             .into_iter()
             .map(|sort| {
-                let mut ctx = Ctx::new(bnd.field.clone());
+                let mut b = Builder::<Self>::new(&bnd.field);
                 let name = "a".to_owned();
-                let e = Self::variable(&mut ctx, &name, &sort, false);
-                let var = leaf_term(Op::Var(name.clone(), sort.clone()));
-                let no_valid = term![NOT; term![Op::Quant(Quant {
+                let (_, _, valid, sat) = b.new_enc(&name, &sort, None, false);
+                let some_valid = term![Op::Quant(Quant {
                     ty: QuantType::Exists,
                     bindings: vec![(name, sort.clone())],
-                }); e.is_valid(var)]];
-                let mut assertions = ctx.assertions;
-                assertions.push(no_valid);
-                VerCond::new(Sound, RuleType::Var, mk_and(assertions)).sort(&sort)
+                }); valid];
+                Vc::valid(Sound, RuleType::Var, term![IMPLIES; sat, some_valid]).sort(&sort)
             })
             .collect()
     }
 
     /// Create formulas that are SAT iff some variable rule is incomplete.
-    fn complete_vars(bnd: &Bound) -> Vec<VerCond> {
+    fn complete_vars(bnd: &Bound) -> Vec<Vc> {
         Self::sorts(bnd)
             .into_iter()
             .flat_map(|sort| {
                 [false, true].iter().map(move |public| {
-                    let mut ctx = Ctx::new(bnd.field.clone());
-                    let name = "a".to_owned();
-                    let _e = Self::variable(&mut ctx, &name, &sort, *public);
-                    let mut assertions = Vec::new();
-                    assertions.extend(correct_precompute(&ctx));
-                    assertions.push(term![NOT; mk_and(ctx.assertions)]);
-
-                    VerCond::new(Complete, RuleType::Conv, mk_and(assertions))
+                    let mut b = Builder::<Self>::new(&bnd.field);
+                    let (_, _, valid, sat) = b.new_enc("a", &sort, None, *public);
+                    Vc::valid(Complete, RuleType::Var, b.sub(&term![AND; valid, sat]))
                         .sort(&sort)
                         .public(*public)
                 })
@@ -119,40 +141,35 @@ pub trait VerifiableEncoding: Encoding {
     }
 
     /// Create formulas that are SAT iff some conversion rule is unsound.
-    fn sound_convs(bnd: &Bound) -> Vec<VerCond> {
+    fn sound_convs(bnd: &Bound) -> Vec<Vc> {
         Self::valid_conversions(bnd)
             .into_iter()
             .map(|(from, to, sort)| {
-                let mut ctx = Ctx::new(bnd.field.clone());
-                let name = "a".to_owned();
-                let e = Self::variable_ty(&mut ctx, &name, &sort, from, false);
-                let var = leaf_term(Op::Var(name, sort.clone()));
-                ctx.assertions.extend(correct_precompute(&ctx));
-                let e2 = e.convert(&mut ctx, to);
-                let is_valid = e2.is_valid(var);
-                let mut assertions = ctx.assertions;
-                assertions.push(term![NOT; is_valid]);
-                VerCond::new(Sound, RuleType::Conv, mk_and(assertions))
-                    .sort(&sort)
-                    .from(from)
-                    .to(to)
+                let mut b = Builder::<Self>::new(&bnd.field);
+                let (enc_in, t_in, in_valid, _) = b.new_enc("a", &sort, Some(from), false);
+                let (valid_conv, env_out) = b.assertions(|c| enc_in.convert(c, to));
+                Vc::valid(
+                    Sound,
+                    RuleType::Conv,
+                    term![IMPLIES; term![AND; in_valid, valid_conv], env_out.is_valid(t_in)],
+                )
+                .sort(&sort)
+                .from(from)
+                .to(to)
             })
             .collect()
     }
 
     /// Create formulas that are SAT iff some conversion rule is incomplete.
-    fn complete_convs(bnd: &Bound) -> Vec<VerCond> {
+    fn complete_convs(bnd: &Bound) -> Vec<Vc> {
         Self::valid_conversions(bnd)
             .into_iter()
             .map(|(from, to, sort)| {
-                let mut ctx = Ctx::new(bnd.field.clone());
-                let name = "a".to_owned();
-                let e = Self::variable_ty(&mut ctx, &name, &sort, from, false);
-                let _e2 = e.convert(&mut ctx, to);
-                let mut assertions = Vec::new();
-                assertions.extend(correct_precompute(&ctx));
-                assertions.push(term![NOT; mk_and(ctx.assertions)]);
-                VerCond::new(Complete, RuleType::Conv, mk_and(assertions))
+                let mut b = Builder::<Self>::new(&bnd.field);
+                let (enc_in, t_in, _, _) = b.new_enc("a", &sort, Some(from), false);
+                let (valid_conv, env_out) = b.assertions(|c| enc_in.convert(c, to));
+                let t = b.sub(&term![AND; valid_conv, env_out.is_valid(t_in)]);
+                Vc::valid(Complete, RuleType::Conv, t)
                     .sort(&sort)
                     .from(from)
                     .to(to)
@@ -160,8 +177,8 @@ pub trait VerifiableEncoding: Encoding {
             .collect()
     }
 
-    /// List all configurations valid for this rule
-    fn cfgs(rule: &Rule<Self>, bnd: &Bound) -> Vec<(Sort, Op, Vec<Sort>)> {
+    /// List all configurations valid for this operator rule
+    fn op_cfgs(rule: &Rule<Self>, bnd: &Bound) -> Vec<(Sort, Op, Vec<Sort>)> {
         let mut out = Vec::new();
         for sort in sorts(&rule.pattern().1, bnd) {
             for op in ops(&rule.pattern().0, &sort, bnd) {
@@ -174,73 +191,63 @@ pub trait VerifiableEncoding: Encoding {
     }
 
     /// Create formulas that are SAT iff some op rule is unsound.
-    fn sound_ops(rule: &Rule<Self>, bnd: &Bound) -> Vec<VerCond> {
-        Self::cfgs(rule, bnd)
+    fn sound_ops(rule: &Rule<Self>, bnd: &Bound) -> Vec<Vc> {
+        Self::op_cfgs(rule, bnd)
             .into_iter()
             .map(|(sort, op, arg_sorts)| {
                 let vars = gen_vars(arg_sorts.clone());
-                let mut assertions = Vec::new();
+                let mut b = Builder::<Self>::new(&bnd.field);
 
-                // validly encode them
-                let mut ctx = Ctx::new(bnd.field.clone());
-                let e_args: Vec<Self> = vars
+                let e_args: Vec<_> = vars
                     .iter()
                     .enumerate()
-                    .map(|(i, (name, sort, b))| {
-                        let e = Self::variable_ty(&mut ctx, name, sort, rule.encoding_ty(i), false);
-                        assertions.push(e.is_valid(b.clone()));
-                        e
+                    .map(|(i, (name, sort, _))| {
+                        b.new_enc(name, sort, Some(rule.encoding_ty(i)), false)
                     })
                     .collect();
+                let valid_ins = mk_and(e_args.iter().map(|t| t.2.clone()).collect());
 
-                // apply the lowering rule
-                let t = term(op.clone(), vars.iter().map(|(_, _, t)| t.clone()).collect());
-                let e_t = rule.apply(&mut ctx, &t.op, &e_args.iter().collect::<Vec<_>>());
-                assertions.extend(ctx.assertions); // save the assertions
+                let t = term(op.clone(), e_args.iter().map(|tup| tup.1.clone()).collect());
+                let (sat, e_t) = b.assertions(|c| {
+                    rule.apply(c, &t.op, &e_args.iter().map(|t| &t.0).collect::<Vec<_>>())
+                });
+                let valid_out = e_t.is_valid(t);
 
-                // assert that the output is mal-encoded
-                assertions.push(term![NOT; e_t.is_valid(t.clone())]);
-
-                VerCond::new(Sound, RuleType::Op, mk_and(assertions))
-                    .sort(&sort)
-                    .op_pat(OpPat::from(&op))
-                    .arg_sorts(&arg_sorts)
+                Vc::valid(
+                    Sound,
+                    RuleType::Op,
+                    term![IMPLIES; term![AND; valid_ins, sat], valid_out],
+                )
+                .sort(&sort)
+                .op_pat(OpPat::from(&op))
+                .arg_sorts(&arg_sorts)
             })
             .collect()
     }
 
     /// Create formulas that are SAT iff some op rule is incomplete.
-    fn complete_ops(rule: &Rule<Self>, bnd: &Bound) -> Vec<VerCond> {
-        Self::cfgs(rule, bnd)
+    fn complete_ops(rule: &Rule<Self>, bnd: &Bound) -> Vec<Vc> {
+        Self::op_cfgs(rule, bnd)
             .into_iter()
             .map(|(sort, op, arg_sorts)| {
                 let vars = gen_vars(arg_sorts.clone());
-                let mut assertions = Vec::new();
+                let mut b = Builder::<Self>::new(&bnd.field);
 
-                // encode them
-                let mut ctx = Ctx::new(bnd.field.clone());
-                let e_args: Vec<Self> = vars
+                let e_args: Vec<_> = vars
                     .iter()
                     .enumerate()
-                    .map(|(i, (n, s, _))| {
-                        Self::variable_ty(&mut ctx, n, s, rule.encoding_ty(i), false)
+                    .map(|(i, (name, sort, _))| {
+                        b.new_enc(name, sort, Some(rule.encoding_ty(i)), false)
                     })
                     .collect();
 
-                // we check encodings separately
-                ctx.assertions.clear();
+                let t = term(op.clone(), e_args.iter().map(|tup| tup.1.clone()).collect());
+                let (sat, e_t) = b.assertions(|c| {
+                    rule.apply(c, &t.op, &e_args.iter().map(|t| &t.0).collect::<Vec<_>>())
+                });
+                let valid_out = e_t.is_valid(t);
 
-                // apply the lowering rule
-                let t = term(op.clone(), vars.iter().map(|(_, _, t)| t.clone()).collect());
-                let _e_t = rule.apply(&mut ctx, &t.op, &e_args.iter().collect::<Vec<_>>());
-
-                // assert the pre-compute is correct, through substitution
-                let ctx_assertions_subbed = precompute_sub(&ctx);
-
-                // assert that some contraint is broken
-                assertions.push(term![NOT; mk_and(ctx_assertions_subbed)]);
-
-                VerCond::new(Complete, RuleType::Op, mk_and(assertions))
+                Vc::valid(Complete, RuleType::Op, b.sub(&term![AND; sat, valid_out]))
                     .sort(&sort)
                     .op_pat(OpPat::from(&op))
                     .arg_sorts(&arg_sorts)
@@ -249,14 +256,13 @@ pub trait VerifiableEncoding: Encoding {
     }
 
     /// Create formulas that are SAT iff some const encoding rule is incorrect.
-    fn complete_consts(bnd: &Bound) -> Vec<VerCond> {
+    fn complete_consts(bnd: &Bound) -> Vec<Vc> {
         Self::sorts(bnd)
             .into_iter()
             .map(|sort| {
-                let name = "a".to_owned();
-                let var = leaf_term(Op::Var(name.clone(), sort.clone()));
+                let var = leaf_term(Op::Var("a".into(), sort.clone()));
                 let e = Self::const_(&bnd.field, &var);
-                VerCond::new(Complete, RuleType::Const, term![NOT; e.is_valid(var)]).sort(&sort)
+                Vc::valid(Complete, RuleType::Const, e.is_valid(var)).sort(&sort)
             })
             .collect()
     }
@@ -272,30 +278,17 @@ pub trait VerifiableEncoding: Encoding {
         out
     }
 
-    /// Embed and create variable
-    fn wit_var(c: &mut Ctx, name: &str, sort: &Sort, ty: Self::Type, valid: bool) -> (Self, Term) {
-        let e = Self::variable_ty(c, &name, sort, ty, false);
-        let var = leaf_term(Op::Var(name.into(), sort.clone()));
-        if valid {
-            c.assert(e.is_valid(var.clone()));
-        }
-        (e, var)
-    }
-
     /// Create formulas that are SAT iff some eq assertion rule is unsound.
-    fn complete_eqs(bnd: &Bound) -> Vec<VerCond> {
+    fn complete_eqs(bnd: &Bound) -> Vec<Vc> {
         Self::sort_ty_pairs(bnd)
             .into_iter()
             .map(|(sort, ty)| {
-                let mut ctx = Ctx::new(bnd.field.clone());
-                let mut assertions = Vec::new();
-                let (a_enc, a_term) = Self::wit_var(&mut ctx, "a", &sort, ty, false);
-                let (b_enc, b_term) = Self::wit_var(&mut ctx, "b", &sort, ty, false);
-                ctx.assertions.clear();
-                a_enc.assert_eq(&mut ctx, &b_enc);
-                assertions.push(term![NOT; mk_and(precompute_sub(&ctx))]);
-                assertions.push(term![EQ; a_term, b_term]);
-                VerCond::new(Complete, RuleType::Eq, mk_and(assertions))
+                let mut b = Builder::<Self>::new(&bnd.field);
+                let (a_enc, a_term, _, _) = b.new_enc("a", &sort, Some(ty), false);
+                let (b_enc, b_term, _, _) = b.new_enc("b", &sort, Some(ty), false);
+                let (sat, ()) = b.assertions(|c| a_enc.assert_eq(c, &b_enc));
+                let cond = term![IMPLIES; term![EQ; a_term, b_term], sat];
+                Vc::valid(Complete, RuleType::Eq, b.sub(&cond))
                     .sort(&sort)
                     .from(ty)
             })
@@ -303,24 +296,28 @@ pub trait VerifiableEncoding: Encoding {
     }
 
     /// Create formulas that are SAT iff some eq assertion rule is incomplete.
-    fn sound_eqs(bnd: &Bound) -> Vec<VerCond> {
+    fn sound_eqs(bnd: &Bound) -> Vec<Vc> {
         Self::sort_ty_pairs(bnd)
             .into_iter()
             .map(|(sort, ty)| {
-                let mut ctx = Ctx::new(bnd.field.clone());
-                let (a_enc, a_term) = Self::wit_var(&mut ctx, "a", &sort, ty, true);
-                let (b_enc, b_term) = Self::wit_var(&mut ctx, "b", &sort, ty, true);
-                a_enc.assert_eq(&mut ctx, &b_enc);
-                ctx.assert(term![NOT; term![EQ; a_term, b_term]]);
-                VerCond::new(Sound, RuleType::Eq, mk_and(ctx.assertions))
-                    .sort(&sort)
-                    .from(ty)
+                let mut b = Builder::<Self>::new(&bnd.field);
+                let (a_enc, a_term, a_valid, _) = b.new_enc("a", &sort, Some(ty), false);
+                let (b_enc, b_term, b_valid, _) = b.new_enc("b", &sort, Some(ty), false);
+                let (sat, ()) = b.assertions(|c| a_enc.assert_eq(c, &b_enc));
+                let hyp = term![AND; a_valid, b_valid, sat];
+                Vc::valid(
+                    Sound,
+                    RuleType::Eq,
+                    term![IMPLIES; hyp, term![EQ; a_term, b_term]],
+                )
+                .sort(&sort)
+                .from(ty)
             })
             .collect()
     }
 
     /// Generate ALL verification conditions
-    fn all_vcs(bnd: &Bound) -> Vec<VerCond> {
+    fn all_vcs(bnd: &Bound) -> Vec<Vc> {
         std::iter::empty()
             .chain(Self::complete_consts(bnd))
             .chain(Self::sound_vars(bnd))
@@ -334,7 +331,7 @@ pub trait VerifiableEncoding: Encoding {
             }))
             .chain(Self::sound_eqs(bnd))
             .chain(Self::complete_eqs(bnd))
-            .map(VerCond::complete)
+            .map(Vc::complete)
             .collect()
     }
 }
@@ -383,7 +380,7 @@ fn sorts(s: &SortPat, bnd: &Bound) -> Vec<Sort> {
 }
 
 /// A verification condition
-pub struct VerCond {
+pub struct Vc {
     /// key-value pairs that describe this VC
     pub tags: FxHashMap<String, String>,
     /// UNSAT if holds
@@ -417,14 +414,17 @@ pub const TAGS: &[&str] = &[
     TAG_PUBLIC,
 ];
 
-impl VerCond {
-    fn new(prop: Prop, ty: RuleType, formula: Term) -> Self {
+impl Vc {
+    fn unsat(prop: Prop, ty: RuleType, formula: Term) -> Self {
         let this = Self {
             tags: Default::default(),
             formula,
         };
         this.tag(TAG_PROP, &format!("{:?}", prop))
             .tag(TAG_TY, &format!("{:?}", ty))
+    }
+    fn valid(prop: Prop, ty: RuleType, formula: Term) -> Self {
+        Vc::unsat(prop, ty, term![NOT; formula])
     }
     fn complete(mut self) -> Self {
         for t in TAGS {
