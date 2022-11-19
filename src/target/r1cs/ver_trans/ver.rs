@@ -104,7 +104,7 @@ pub trait VerifiableEncoding: Encoding {
                     ty: QuantType::Exists,
                     bindings: vec![(name, sort.clone())],
                 }); valid];
-                Vc::valid(Sound, RuleType::Var, term![IMPLIES; sat, some_valid]).sort(&sort)
+                Vc::valid(Sound, Rt::Var, term![IMPLIES; sat, some_valid]).sort(&sort)
             })
             .collect()
     }
@@ -117,7 +117,7 @@ pub trait VerifiableEncoding: Encoding {
                 [false, true].iter().map(move |public| {
                     let mut b = Builder::<Self>::new(&bnd.field);
                     let (_, _, valid, sat) = b.new_enc("a", &sort, None, *public);
-                    Vc::valid(Complete, RuleType::Var, b.sub(&term![AND; valid, sat]))
+                    Vc::valid(Complete, Rt::Var, b.sub(&term![AND; valid, sat]))
                         .sort(&sort)
                         .public(*public)
                 })
@@ -140,39 +140,27 @@ pub trait VerifiableEncoding: Encoding {
         out
     }
 
-    /// Create formulas that are SAT iff some conversion rule is unsound.
-    fn sound_convs(bnd: &Bound) -> Vec<Vc> {
+    /// VCs for the correctness of all conversion rules.
+    fn conv_vcs(bnd: &Bound) -> Vec<Vc> {
         Self::valid_conversions(bnd)
             .into_iter()
-            .map(|(from, to, sort)| {
+            .flat_map(|(from, to, sort)| {
                 let mut b = Builder::<Self>::new(&bnd.field);
                 let (enc_in, t_in, in_valid, _) = b.new_enc("a", &sort, Some(from), false);
                 let (valid_conv, env_out) = b.assertions(|c| enc_in.convert(c, to));
-                Vc::valid(
-                    Sound,
-                    RuleType::Conv,
-                    term![IMPLIES; term![AND; in_valid, valid_conv], env_out.is_valid(t_in)],
-                )
-                .sort(&sort)
-                .from(from)
-                .to(to)
-            })
-            .collect()
-    }
-
-    /// Create formulas that are SAT iff some conversion rule is incomplete.
-    fn complete_convs(bnd: &Bound) -> Vec<Vc> {
-        Self::valid_conversions(bnd)
-            .into_iter()
-            .map(|(from, to, sort)| {
-                let mut b = Builder::<Self>::new(&bnd.field);
-                let (enc_in, t_in, _, _) = b.new_enc("a", &sort, Some(from), false);
-                let (valid_conv, env_out) = b.assertions(|c| enc_in.convert(c, to));
-                let t = b.sub(&term![AND; valid_conv, env_out.is_valid(t_in)]);
-                Vc::valid(Complete, RuleType::Conv, t)
-                    .sort(&sort)
-                    .from(from)
-                    .to(to)
+                let valid_out = env_out.is_valid(t_in);
+                let complete = b.sub(&term![AND; valid_conv.clone(), valid_out.clone()]);
+                let sound = term![IMPLIES; term![AND; in_valid, valid_conv], valid_out];
+                vec![
+                    Vc::valid(Sound, Rt::Conv, sound)
+                        .sort(&sort)
+                        .from(from)
+                        .to(to),
+                    Vc::valid(Complete, Rt::Conv, complete)
+                        .sort(&sort)
+                        .from(from)
+                        .to(to),
+                ]
             })
             .collect()
     }
@@ -190,11 +178,11 @@ pub trait VerifiableEncoding: Encoding {
         out
     }
 
-    /// Create formulas that are SAT iff some op rule is unsound.
-    fn sound_ops(rule: &Rule<Self>, bnd: &Bound) -> Vec<Vc> {
+    /// VCs for the correctness of all operator rules.
+    fn op_vcs(rule: &Rule<Self>, bnd: &Bound) -> Vec<Vc> {
         Self::op_cfgs(rule, bnd)
             .into_iter()
-            .map(|(sort, op, arg_sorts)| {
+            .flat_map(|(sort, op, arg_sorts)| {
                 let vars = gen_vars(arg_sorts.clone());
                 let mut b = Builder::<Self>::new(&bnd.field);
 
@@ -213,44 +201,18 @@ pub trait VerifiableEncoding: Encoding {
                 });
                 let valid_out = e_t.is_valid(t);
 
-                Vc::valid(
-                    Sound,
-                    RuleType::Op,
-                    term![IMPLIES; term![AND; valid_ins, sat], valid_out],
-                )
-                .sort(&sort)
-                .op_pat(OpPat::from(&op))
-                .arg_sorts(&arg_sorts)
-            })
-            .collect()
-    }
-
-    /// Create formulas that are SAT iff some op rule is incomplete.
-    fn complete_ops(rule: &Rule<Self>, bnd: &Bound) -> Vec<Vc> {
-        Self::op_cfgs(rule, bnd)
-            .into_iter()
-            .map(|(sort, op, arg_sorts)| {
-                let vars = gen_vars(arg_sorts.clone());
-                let mut b = Builder::<Self>::new(&bnd.field);
-
-                let e_args: Vec<_> = vars
-                    .iter()
-                    .enumerate()
-                    .map(|(i, (name, sort, _))| {
-                        b.new_enc(name, sort, Some(rule.encoding_ty(i)), false)
-                    })
-                    .collect();
-
-                let t = term(op.clone(), e_args.iter().map(|tup| tup.1.clone()).collect());
-                let (sat, e_t) = b.assertions(|c| {
-                    rule.apply(c, &t.op, &e_args.iter().map(|t| &t.0).collect::<Vec<_>>())
-                });
-                let valid_out = e_t.is_valid(t);
-
-                Vc::valid(Complete, RuleType::Op, b.sub(&term![AND; sat, valid_out]))
-                    .sort(&sort)
-                    .op_pat(OpPat::from(&op))
-                    .arg_sorts(&arg_sorts)
+                let sound = term![IMPLIES; term![AND; valid_ins, sat.clone()], valid_out.clone()];
+                let complete = b.sub(&term![AND; sat, valid_out]);
+                vec![
+                    Vc::valid(Sound, Rt::Op, sound)
+                        .sort(&sort)
+                        .op(&op)
+                        .arg_sorts(&arg_sorts),
+                    Vc::valid(Complete, Rt::Op, complete)
+                        .sort(&sort)
+                        .op(&op)
+                        .arg_sorts(&arg_sorts),
+                ]
             })
             .collect()
     }
@@ -262,7 +224,7 @@ pub trait VerifiableEncoding: Encoding {
             .map(|sort| {
                 let var = leaf_term(Op::Var("a".into(), sort.clone()));
                 let e = Self::const_(&bnd.field, &var);
-                Vc::valid(Complete, RuleType::Const, e.is_valid(var)).sort(&sort)
+                Vc::valid(Complete, Rt::Const, e.is_valid(var)).sort(&sort)
             })
             .collect()
     }
@@ -278,40 +240,23 @@ pub trait VerifiableEncoding: Encoding {
         out
     }
 
-    /// Create formulas that are SAT iff some eq assertion rule is unsound.
-    fn complete_eqs(bnd: &Bound) -> Vec<Vc> {
+    /// VCs for the correctness of all equality assertion rules.
+    fn eq_vcs(bnd: &Bound) -> Vec<Vc> {
         Self::sort_ty_pairs(bnd)
             .into_iter()
-            .map(|(sort, ty)| {
-                let mut b = Builder::<Self>::new(&bnd.field);
-                let (a_enc, a_term, _, _) = b.new_enc("a", &sort, Some(ty), false);
-                let (b_enc, b_term, _, _) = b.new_enc("b", &sort, Some(ty), false);
-                let (sat, ()) = b.assertions(|c| a_enc.assert_eq(c, &b_enc));
-                let cond = term![IMPLIES; term![EQ; a_term, b_term], sat];
-                Vc::valid(Complete, RuleType::Eq, b.sub(&cond))
-                    .sort(&sort)
-                    .from(ty)
-            })
-            .collect()
-    }
-
-    /// Create formulas that are SAT iff some eq assertion rule is incomplete.
-    fn sound_eqs(bnd: &Bound) -> Vec<Vc> {
-        Self::sort_ty_pairs(bnd)
-            .into_iter()
-            .map(|(sort, ty)| {
+            .flat_map(|(sort, ty)| {
                 let mut b = Builder::<Self>::new(&bnd.field);
                 let (a_enc, a_term, a_valid, _) = b.new_enc("a", &sort, Some(ty), false);
                 let (b_enc, b_term, b_valid, _) = b.new_enc("b", &sort, Some(ty), false);
                 let (sat, ()) = b.assertions(|c| a_enc.assert_eq(c, &b_enc));
-                let hyp = term![AND; a_valid, b_valid, sat];
-                Vc::valid(
-                    Sound,
-                    RuleType::Eq,
-                    term![IMPLIES; hyp, term![EQ; a_term, b_term]],
-                )
-                .sort(&sort)
-                .from(ty)
+                let complete =
+                    b.sub(&term![IMPLIES; term![EQ; a_term.clone(), b_term.clone()], sat.clone()]);
+                let sound =
+                    term![IMPLIES; term![AND; a_valid, b_valid, sat], term![EQ; a_term, b_term]];
+                vec![
+                    Vc::valid(Complete, Rt::Eq, complete).sort(&sort).from(ty),
+                    Vc::valid(Sound, Rt::Eq, sound).sort(&sort).from(ty),
+                ]
             })
             .collect()
     }
@@ -322,15 +267,13 @@ pub trait VerifiableEncoding: Encoding {
             .chain(Self::complete_consts(bnd))
             .chain(Self::sound_vars(bnd))
             .chain(Self::complete_vars(bnd))
-            .chain(Self::sound_convs(bnd))
-            .chain(Self::complete_convs(bnd))
-            .chain(Self::rules().iter().flat_map(|rule| {
-                std::iter::empty()
-                    .chain(Self::sound_ops(rule, bnd))
-                    .chain(Self::complete_ops(rule, bnd))
-            }))
-            .chain(Self::sound_eqs(bnd))
-            .chain(Self::complete_eqs(bnd))
+            .chain(Self::conv_vcs(bnd))
+            .chain(
+                Self::rules()
+                    .iter()
+                    .flat_map(|rule| Self::op_vcs(rule, bnd)),
+            )
+            .chain(Self::eq_vcs(bnd))
             .map(Vc::complete)
             .collect()
     }
@@ -359,6 +302,7 @@ pub enum RuleType {
     /// equality assertion
     Eq,
 }
+use RuleType as Rt;
 
 /// A bound for verification
 pub struct Bound {
@@ -458,8 +402,8 @@ impl Vc {
         self.tag(TAG_ARG_SORTS, &s)
             .tag(TAG_N_ARGS, &format!("{}", sorts.len()))
     }
-    fn op_pat(self, sort_pat: OpPat) -> Self {
-        self.tag(TAG_OP_PAT, &format!("{}", sort_pat))
+    fn op(self, sort_pat: &Op) -> Self {
+        self.tag(TAG_OP_PAT, &format!("{}", OpPat::from(sort_pat)))
     }
     fn from<T: EncodingType>(self, ty: T) -> Self {
         self.tag(TAG_FROM, &format!("{:?}", ty))
