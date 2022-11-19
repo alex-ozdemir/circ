@@ -47,12 +47,14 @@ impl<E: VerifiableEncoding> Builder<E> {
         (e, var, is_valid, mk_and(take(&mut self.ctx.assertions)))
     }
 
-    fn assertions<T, F: FnOnce(&mut Ctx) -> T>(&mut self, f: F) -> (Term, T) {
+    /// Capture the assertions for contextual code
+    fn capture<T, F: FnOnce(&mut Ctx) -> T>(&mut self, f: F) -> (Term, T) {
         assert!(self.ctx.assertions.is_empty());
         let t = f(&mut self.ctx);
         (mk_and(take(&mut self.ctx.assertions)), t)
     }
 
+    /// Substitute correct precomputation into this term.
     fn sub(&mut self, t: &Term) -> Term {
         for (val, name, _) in take(&mut self.ctx.new_variables) {
             let val_s = extras::substitute_cache(&val, &mut self.subs);
@@ -147,7 +149,7 @@ pub trait VerifiableEncoding: Encoding {
             .flat_map(|(from, to, sort)| {
                 let mut b = Builder::<Self>::new(&bnd.field);
                 let (enc_in, t_in, in_valid, _) = b.new_enc("a", &sort, Some(from), false);
-                let (valid_conv, env_out) = b.assertions(|c| enc_in.convert(c, to));
+                let (valid_conv, env_out) = b.capture(|c| enc_in.convert(c, to));
                 let valid_out = env_out.is_valid(t_in);
                 let complete = b.sub(&term![AND; valid_conv.clone(), valid_out.clone()]);
                 let sound = term![IMPLIES; term![AND; in_valid, valid_conv], valid_out];
@@ -196,7 +198,7 @@ pub trait VerifiableEncoding: Encoding {
                 let valid_ins = mk_and(e_args.iter().map(|t| t.2.clone()).collect());
 
                 let t = term(op.clone(), e_args.iter().map(|tup| tup.1.clone()).collect());
-                let (sat, e_t) = b.assertions(|c| {
+                let (sat, e_t) = b.capture(|c| {
                     rule.apply(c, &t.op, &e_args.iter().map(|t| &t.0).collect::<Vec<_>>())
                 });
                 let valid_out = e_t.is_valid(t);
@@ -248,7 +250,7 @@ pub trait VerifiableEncoding: Encoding {
                 let mut b = Builder::<Self>::new(&bnd.field);
                 let (a_enc, a_term, a_valid, _) = b.new_enc("a", &sort, Some(ty), false);
                 let (b_enc, b_term, b_valid, _) = b.new_enc("b", &sort, Some(ty), false);
-                let (sat, ()) = b.assertions(|c| a_enc.assert_eq(c, &b_enc));
+                let (sat, ()) = b.capture(|c| a_enc.assert_eq(c, &b_enc));
                 let complete =
                     b.sub(&term![IMPLIES; term![EQ; a_term.clone(), b_term.clone()], sat.clone()]);
                 let sound =
