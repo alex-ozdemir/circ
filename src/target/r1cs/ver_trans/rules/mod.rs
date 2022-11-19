@@ -876,6 +876,33 @@ fn ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
     (qb, rb)
 }
 
+#[allow(dead_code)]
+fn old_ubv_qr(ctx: &mut Ctx, a: Term, b: Term, n: usize) -> (Vec<Term>, Vec<Term>) {
+    let a_bv_term = term![Op::PfToBv(n); a.clone()];
+    let b_bv_term = term![Op::PfToBv(n); b.clone()];
+    let q_term = term![Op::UbvToPf(ctx.field().clone()); term![BV_UDIV; a_bv_term.clone(), b_bv_term.clone()]];
+    let r_term = term![Op::UbvToPf(ctx.field().clone()); term![BV_UREM; a_bv_term, b_bv_term]];
+    let q = ctx.fresh("div_q", q_term, false);
+    let r = ctx.fresh("div_r", r_term, false);
+    let qb = bit_split(ctx, "div_q", q.clone(), n);
+    let rb = bit_split(ctx, "div_r", r.clone(), n);
+    // qb = a - r
+    ctx.assert(term![EQ; term![PF_MUL; q.clone(), b.clone()], pf_sub(a, r.clone())]);
+    //                            let is_zero = self.is_zero(b.clone());
+    //                            let is_gt = self.bv_ge(b - 1, &r, n);
+    //                            let is_not_ge = self.bool_not(&is_gt);
+    //                            let is_not_zero = self.bool_not(&is_zero);
+    //                            self.r1cs
+    //                                .constraint(is_not_ge.1, is_not_zero.1, self.r1cs.zero());
+    let is_gt = bv_cmp(ctx, b.clone(), r, n, true);
+    let is_not_ge = bool_neg(is_gt);
+    let is_zero = is_zero(ctx, b);
+    let is_not_zero = bool_neg(is_zero);
+    // b > r OR b == 0
+    ctx.assert(term![EQ; term![PF_MUL; is_not_ge, is_not_zero], ctx.zero()]);
+    (qb, rb)
+}
+
 fn bv_udiv(ctx: &mut Ctx, _op: &Op, args: &[&Enc]) -> Enc {
     Enc::Bits(ubv_qr(ctx, args[0].uint().0, args[1].uint().0, args[0].w()).0)
 }
