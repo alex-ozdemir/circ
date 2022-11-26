@@ -17,9 +17,9 @@ struct Builder<E> {
 }
 
 impl<E: VerifiableEncoding> Builder<E> {
-    fn new(f: &FieldT) -> Self {
+    fn new(bnd: &Bound) -> Self {
         Self {
-            ctx: Ctx::new(f.clone()),
+            ctx: Ctx::new(bnd.field.clone()),
             subs: Default::default(),
             _phant: Default::default(),
         }
@@ -45,6 +45,12 @@ impl<E: VerifiableEncoding> Builder<E> {
         }
         let is_valid = e.is_valid(var.clone());
         (e, var, is_valid, mk_and(take(&mut self.ctx.assertions)))
+    }
+
+    /// Create an term and encoding that is structurally guaranteed to be valid for it.
+    fn valid_enc(&mut self, name: &str, sort: &Sort, ty: E::Type) -> (E, Term) {
+        let var = leaf_term(Op::Var(name.into(), sort.clone()));
+        (E::from_term(var.clone(), ty, self.ctx.field()), var)
     }
 
     /// Capture the assertions for contextual code
@@ -101,43 +107,35 @@ pub trait VerifiableEncoding: Encoding {
             .collect()
     }
 
-    /// Get a variable encoded w/ a specific encoding type. Converts if needed.
-    fn variable_ty(c: &mut Ctx, name: &str, sort: &Sort, ty: Self::Type, public: bool) -> Self {
-        let e = Self::variable(c, name, sort, public);
-        e.convert(c, ty)
-    }
-
     /// Create formulas that are SAT iff some variable rule is unsound.
-    fn sound_vars(bnd: &Bound) -> Vec<Vc> {
-        Self::sorts(bnd)
-            .into_iter()
-            .map(|sort| {
-                let mut b = Builder::<Self>::new(&bnd.field);
-                let name = "a".to_owned();
-                let (_, _, valid, sat) = b.new_enc(&name, &sort, None, false);
-                let some_valid = term![Op::Quant(Quant {
-                    ty: QuantType::Exists,
-                    bindings: vec![(name, sort.clone())],
-                }); valid];
-                Vc::valid(Sound, Rt::Var, term![IMPLIES; sat, some_valid]).sort(&sort)
-            })
-            .collect()
-    }
-
-    /// Create formulas that are SAT iff some variable rule is incomplete.
-    fn complete_vars(bnd: &Bound) -> Vec<Vc> {
-        Self::sorts(bnd)
-            .into_iter()
-            .flat_map(|sort| {
-                [false, true].iter().map(move |public| {
-                    let mut b = Builder::<Self>::new(&bnd.field);
-                    let (_, _, valid, sat) = b.new_enc("a", &sort, None, *public);
-                    Vc::valid(Complete, Rt::Var, b.sub(&term![AND; valid, sat]))
-                        .sort(&sort)
-                        .public(*public)
-                })
-            })
-            .collect()
+    fn var_vcs(bnd: &Bound) -> Vec<Vc> {
+        let mut vcs = Vec::new();
+        for sort in Self::sorts(bnd) {
+            for public in [false, true] {
+                for prop in [Sound, Complete] {
+                    if !(prop == Sound && public) {
+                        let mut b = Builder::<Self>::new(&bnd);
+                        let name = "a".to_owned();
+                        let (_, _, valid, sat) = b.new_enc(&name, &sort, None, public);
+                        let condition = if prop.trust() {
+                            b.sub(&term![AND; valid, sat])
+                        } else {
+                            let some_valid = term![Op::Quant(Quant {
+                                    ty: QuantType::Exists,
+                                    bindings: vec![(name, sort.clone())],
+                                }); valid];
+                            term![IMPLIES; sat.clone(), some_valid]
+                        };
+                        vcs.push(
+                            Vc::valid(prop, Rt::Var, condition)
+                                .sort(&sort)
+                                .public(public),
+                        )
+                    }
+                }
+            }
+        }
+        vcs
     }
 
     /// List valid conversions
@@ -160,22 +158,21 @@ pub trait VerifiableEncoding: Encoding {
         Self::valid_conversions(bnd)
             .into_iter()
             .flat_map(|(from, to, sort)| {
-                let mut b = Builder::<Self>::new(&bnd.field);
-                let (enc_in, t_in, in_valid, _) = b.new_enc("a", &sort, Some(from), false);
-                let (valid_conv, env_out) = b.capture(|c| enc_in.convert(c, to));
-                let valid_out = env_out.is_valid(t_in);
-                let complete = b.sub(&term![AND; valid_conv.clone(), valid_out.clone()]);
-                let sound = term![IMPLIES; term![AND; in_valid, valid_conv], valid_out];
-                vec![
-                    Vc::valid(Sound, Rt::Conv, sound)
+                [Sound, Complete].iter().map(move |prop| {
+                    let mut b = Builder::<Self>::new(bnd);
+                    let (enc_in, t_in) = b.valid_enc("a", &sort, from);
+                    let (valid_conv, enc_out) = b.capture(|c| enc_in.convert(c, to));
+                    let valid_out = enc_out.is_valid(t_in);
+                    let condition = if prop.trust() {
+                        b.sub(&term![AND; valid_conv.clone(), valid_out.clone()])
+                    } else {
+                        term![IMPLIES; valid_conv, valid_out]
+                    };
+                    Vc::valid(*prop, Rt::Conv, condition)
                         .sort(&sort)
                         .from(from)
-                        .to(to),
-                    Vc::valid(Complete, Rt::Conv, complete)
-                        .sort(&sort)
-                        .from(from)
-                        .to(to),
-                ]
+                        .to(to)
+                })
             })
             .collect()
     }
@@ -198,36 +195,32 @@ pub trait VerifiableEncoding: Encoding {
         Self::op_cfgs(rule, bnd)
             .into_iter()
             .flat_map(|(sort, op, arg_sorts)| {
-                let vars = gen_vars(arg_sorts.clone());
-                let mut b = Builder::<Self>::new(&bnd.field);
+                [Sound, Complete].iter().map(move |prop| {
+                    let vars = gen_vars(arg_sorts.clone());
+                    let mut b = Builder::<Self>::new(&bnd);
 
-                let e_args: Vec<_> = vars
-                    .iter()
-                    .enumerate()
-                    .map(|(i, (name, sort, _))| {
-                        b.new_enc(name, sort, Some(rule.encoding_ty(i)), false)
-                    })
-                    .collect();
-                let valid_ins = mk_and(e_args.iter().map(|t| t.2.clone()).collect());
+                    let e_args: Vec<_> = vars
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (name, sort, _))| b.valid_enc(name, sort, rule.encoding_ty(i)))
+                        .collect();
 
-                let t = term(op.clone(), e_args.iter().map(|tup| tup.1.clone()).collect());
-                let (sat, e_t) = b.capture(|c| {
-                    rule.apply(c, &t.op, &e_args.iter().map(|t| &t.0).collect::<Vec<_>>())
-                });
-                let valid_out = e_t.is_valid(t);
+                    let t = term(op.clone(), e_args.iter().map(|tup| tup.1.clone()).collect());
+                    let (sat, e_t) = b.capture(|c| {
+                        rule.apply(c, &t.op, &e_args.iter().map(|t| &t.0).collect::<Vec<_>>())
+                    });
+                    let valid_out = e_t.is_valid(t);
+                    let condition = if prop.trust() {
+                        b.sub(&term![AND; sat, valid_out])
+                    } else {
+                        term![IMPLIES; sat.clone(), valid_out.clone()]
+                    };
 
-                let sound = term![IMPLIES; term![AND; valid_ins, sat.clone()], valid_out.clone()];
-                let complete = b.sub(&term![AND; sat, valid_out]);
-                vec![
-                    Vc::valid(Sound, Rt::Op, sound)
+                    Vc::valid(*prop, Rt::Op, condition)
                         .sort(&sort)
                         .op(&op)
-                        .arg_sorts(&arg_sorts),
-                    Vc::valid(Complete, Rt::Op, complete)
-                        .sort(&sort)
-                        .op(&op)
-                        .arg_sorts(&arg_sorts),
-                ]
+                        .arg_sorts(&arg_sorts)
+                })
             })
             .collect()
     }
@@ -260,18 +253,22 @@ pub trait VerifiableEncoding: Encoding {
         Self::sort_ty_pairs(bnd)
             .into_iter()
             .flat_map(|(sort, ty)| {
-                let mut b = Builder::<Self>::new(&bnd.field);
-                let (a_enc, a_term, a_valid, _) = b.new_enc("a", &sort, Some(ty), false);
-                let (b_enc, b_term, b_valid, _) = b.new_enc("b", &sort, Some(ty), false);
-                let (sat, ()) = b.capture(|c| a_enc.assert_eq(c, &b_enc));
-                let complete =
-                    b.sub(&term![IMPLIES; term![EQ; a_term.clone(), b_term.clone()], sat.clone()]);
-                let sound =
-                    term![IMPLIES; term![AND; a_valid, b_valid, sat], term![EQ; a_term, b_term]];
-                vec![
-                    Vc::valid(Complete, Rt::Eq, complete).sort(&sort).from(ty),
-                    Vc::valid(Sound, Rt::Eq, sound).sort(&sort).from(ty),
-                ]
+                [Sound, Complete]
+                    .iter()
+                    .map(|prop| {
+                        let mut b = Builder::<Self>::new(&bnd);
+                        let (a_enc, a_term) = b.valid_enc("a", &sort, ty);
+                        let (b_enc, b_term) = b.valid_enc("b", &sort, ty);
+                        let (sat, ()) = b.capture(|c| a_enc.assert_eq(c, &b_enc));
+                        let condition = if prop.trust() {
+                            b.sub(&term![IMPLIES; term![EQ; a_term, b_term], sat])
+                        } else {
+                            term![IMPLIES; sat, term![EQ; a_term, b_term]]
+                        };
+                        Vc::valid(*prop, Rt::Eq, condition)
+                    })
+                    .map(|vc| vc.sort(&sort).from(ty))
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
@@ -298,8 +295,7 @@ pub trait VerifiableEncoding: Encoding {
     fn all_vcs(bnd: &Bound) -> Vec<Vc> {
         std::iter::empty()
             .chain(Self::complete_consts(bnd))
-            .chain(Self::sound_vars(bnd))
-            .chain(Self::complete_vars(bnd))
+            .chain(Self::var_vcs(bnd))
             .chain(Self::conv_vcs(bnd))
             .chain(Self::uniq_vcs(bnd))
             .chain(
@@ -314,7 +310,7 @@ pub trait VerifiableEncoding: Encoding {
 }
 
 /// The type of property
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Prop {
     /// A satisfiable output implies a satisfiable input.
     Sound,
@@ -322,8 +318,18 @@ pub enum Prop {
     Complete,
 }
 
+impl Prop {
+    /// Should you trust encodings for this type of VC?
+    fn trust(&self) -> bool {
+        match self {
+            Sound => false,
+            Complete => true,
+        }
+    }
+}
+
 /// The type of rule
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum RuleType {
     /// variable encoding
     Var,
@@ -341,6 +347,7 @@ pub enum RuleType {
 use RuleType as Rt;
 
 /// A bound for verification
+#[derive(Clone)]
 pub struct Bound {
     /// The maximum number of operator arguments
     pub args: usize,
