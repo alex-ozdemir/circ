@@ -116,6 +116,15 @@ impl Enc {
             _ => panic!("Tried to unwrap {:?} as bv uint", self),
         }
     }
+    /// Get the field for this encoding.
+    pub(super) fn f(&self) -> FieldT {
+        match self {
+            Enc::Bit(b) => check(b).as_pf().clone(),
+            Enc::Bits(bs) => check(&bs[0]).as_pf().clone(),
+            Enc::Uint(u, _) => check(u).as_pf().clone(),
+            Enc::Field(f) => check(f).as_pf().clone(),
+        }
+    }
 }
 
 impl Encoding for Enc {

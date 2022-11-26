@@ -68,9 +68,22 @@ impl<E: VerifiableEncoding> Builder<E> {
 
 /// An encoding scheme with formalized semantics.
 pub trait VerifiableEncoding: Encoding {
+    /// Create an encoding with fresh variables begining with `prefix`.
+    fn floating(prefix: &str, ty: Self::Type, f: &FieldT, s: &Sort) -> Self;
+
     /// Given a term `t` and encoded form `self`, return a boolean term which is true iff the
     /// encoding is valid.
     fn is_valid(&self, t: Term) -> Term;
+
+    /// Give the (unique) valid encoding of this term.
+    ///
+    /// We'll generate VCs to test uniqueness.
+    fn from_term(t: Term, ty: Self::Type, f: &FieldT) -> Self;
+
+    /// Give the (unique) term this valid encoding is for.
+    ///
+    /// We'll generate VCs to test uniqueness.
+    fn to_term(&self) -> Term;
 
     /// Sort patterns that this encoding might apply to
     fn sort_pats() -> BTreeSet<SortPat> {
@@ -263,6 +276,24 @@ pub trait VerifiableEncoding: Encoding {
             .collect()
     }
 
+    /// VCs that express the uniqueness of terms for valid encodings,
+    /// and that to_term and from_term implement the bijection between valid encodings and terms.
+    fn uniq_vcs(bnd: &Bound) -> Vec<Vc> {
+        Self::sort_ty_pairs(bnd)
+            .into_iter()
+            .flat_map(|(sort, ty)| {
+                let x = Self::floating("x", ty, &bnd.field, &sort);
+                let a = leaf_term(Op::Var("a".into(), sort.clone()));
+                let b = leaf_term(Op::Var("b".into(), sort.clone()));
+                vec![
+                    Vc::valid(Complete, Rt::Uniq, Self::from_term(a.clone(), ty, &bnd.field).is_valid(a.clone())).sort(&sort).from(ty),
+                    Vc::valid(Complete, Rt::Uniq, term![EQ; Self::from_term(a.clone(), ty, &bnd.field).to_term(), a.clone()]).sort(&sort).from(ty),
+                    Vc::valid(Sound, Rt::Uniq, term![IMPLIES; term![AND; x.is_valid(a.clone()), x.is_valid(b.clone())], term![EQ; a, b]]).sort(&sort).from(ty)
+
+                ]
+            }).collect()
+    }
+
     /// Generate ALL verification conditions
     fn all_vcs(bnd: &Bound) -> Vec<Vc> {
         std::iter::empty()
@@ -270,6 +301,7 @@ pub trait VerifiableEncoding: Encoding {
             .chain(Self::sound_vars(bnd))
             .chain(Self::complete_vars(bnd))
             .chain(Self::conv_vcs(bnd))
+            .chain(Self::uniq_vcs(bnd))
             .chain(
                 Self::rules()
                     .iter()
@@ -303,6 +335,8 @@ pub enum RuleType {
     Conv,
     /// equality assertion
     Eq,
+    /// validity uniqueness
+    Uniq,
 }
 use RuleType as Rt;
 
