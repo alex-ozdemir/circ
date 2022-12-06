@@ -1,5 +1,8 @@
 To do:
 * large verification run
+* fix up uniqueness conditions
+* implement equal in terms of map
+* implement fresh in terms of map
 
 Deferred to do:
 * options system
