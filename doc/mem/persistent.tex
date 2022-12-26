@@ -60,7 +60,6 @@
   \2 compute $\vec e'$ with element-wise coefficient hash over $\vec e$ keyed on $\alpha$.
     \3 The computations is something like $v + \alpha i + k_2 \alpha^2 k_3 \alpha^3 + k_4 \alpha^4$
     \3 The $k$'s are all fixed
-    \3 So if you take the powers as (public) input,
     \3 \csPerT{1}
     \3 Furthermore, the single non-linear product $\alpha i$ is shared with the
     hashes needed for coalescing.
@@ -100,16 +99,16 @@
   \2 goal: check that each $\Delta_t$ is in $[A+1]$
   \2 let $\vec g$ denote all $\Delta_t$s concatenated to $[A+1]$ (length $4A+1$)
   \2 witness $\vec h$: sort $\vec g$
+    \3 check that each delta is 0 or 1. \csPerA{4}
   \2 challenge $\alpha$
   \2 permutation argument for $\vec g, \vec h$ (key $\alpha$)
     \3 \csPerA{8}
 \1 Accounting
   \2 two verifier challenges ($\alpha,\beta$)
-    \3 public inputs ($\alpha,\alpha^2,\alpha^3,\alpha^4,\beta$)
   \2 \csPerN{4}
-  \2 \csPerA{38}
+  \2 \csPerA{42}
     \3 The cost of a linear scan (per element scanned) is $3$ by my reckoning
-    \3 So if $A < 38/3 < 13$, you should do linear scans instead.
+    \3 So if $A < 42/3 = 14$, you should do linear scans instead.
 \1 Large but sparse memories
   \2 What if you want $\vec a$ and $\vec b$ to be index-value pairs, where the
   indices are from a large space (rather than $[N]$)?
