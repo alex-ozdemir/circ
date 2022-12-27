@@ -1,4 +1,4 @@
-\section{Sketch}
+\section{Persistent}
 \begin{outline}
 \1 initial definitions
   \2 \FF: target field
@@ -49,18 +49,19 @@
   permutations of one another
   \2 $T$: number of entries ($3A$)
   \2 entries: (value, idx, time, write?, create?)
-    \2 create is a bit that is set if this is an access writing from the initial persistent RAM
-    \2 times are in $[A+1]$, not $[3A]$
-      \3 accesses from $R$ gets times in $[A]$, as standard
-      \3 all initial writes to have time 0
-      \3 all final reads have time $A$
+    \3 create is a bit that is set if this is an access writing from the initial persistent RAM
+    \3 times are in $[A+1]$, not $[3A]$
+      \4 accesses from $R$ gets times in $[A]$, as standard
+      \4 all initial writes to have time 0
+      \4 all final reads have time $A$
   \2 denote the transcript $\vec e$
   \2 witness: $\vec f$: the transcript ordered on index and then time
   \2 challenge $\alpha$
   \2 compute $\vec e'$ with element-wise coefficient hash over $\vec e$ keyed on $\alpha$.
-    \3 The computations is something like $v + \alpha i + k_2 \alpha^2 k_3 \alpha^3 + k_4 \alpha^4$
+    \3 The computations is something like $v + \alpha i + k_2 \alpha^2 + w \alpha^3 + k_4 \alpha^4$
+      \4: $w$: is write
     \3 The $k$'s are all fixed
-    \3 \csPerT{1}
+    \3 \csPerT{2}
     \3 Furthermore, the single non-linear product $\alpha i$ is shared with the
     hashes needed for coalescing.
   \2 compute $\vec f'$ similarly from $\vec f$
@@ -106,9 +107,9 @@
 \1 Accounting
   \2 two verifier challenges ($\alpha,\beta$)
   \2 \csPerN{4}
-  \2 \csPerA{42}
+  \2 \csPerA{45}
     \3 The cost of a linear scan (per element scanned) is $3$ by my reckoning
-    \3 So if $A < 42/3 = 14$, you should do linear scans instead.
+    \3 So if $A < 45/3 = 15$, you should do linear scans instead.
 \1 Large but sparse memories
   \2 What if you want $\vec a$ and $\vec b$ to be index-value pairs, where the
   indices are from a large space (rather than $[N]$)?
