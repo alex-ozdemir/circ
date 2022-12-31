@@ -61,7 +61,9 @@
     \3 The computations is something like $v + \alpha i + k_2 \alpha^2 + w \alpha^3 + k_4 \alpha^4$
       \4: $w$: is write
     \3 The $k$'s are all fixed
-    \3 \csPerT{2}
+    \3 \csPerT{2} - \csPerA{2}
+      \4 the minus is b/c the $w$s are fixed
+         for the initialization and finalization accesses
     \3 Furthermore, the single non-linear product $\alpha i$ is shared with the
     hashes needed for coalescing.
   \2 compute $\vec f'$ similarly from $\vec f$
@@ -107,17 +109,7 @@
 \1 Accounting
   \2 two verifier challenges ($\alpha,\beta$)
   \2 \csPerN{4}
-  \2 \csPerA{45}
+  \2 \csPerA{43}
     \3 The cost of a linear scan (per element scanned) is $3$ by my reckoning
-    \3 So if $A < 45/3 = 15$, you should do linear scans instead.
-\1 Large but sparse memories
-  \2 What if you want $\vec a$ and $\vec b$ to be index-value pairs, where the
-  indices are from a large space (rather than $[N]$)?
-  \2 I think this system is very close to supporting that
-    \3 perhaps with an extra \csPerN{2}?
-    \3 there are some weird semantic issues
-      \4 what is the API for writing to fresh addresses?
-      \4 is it different than writing to an occupied address?
-      \4 can you read from a fresh address?
-      \4 can you test for freshness?
+    \3 So if $A < 43/3 < 15$, you should do linear scans instead.
 \end{outline}
