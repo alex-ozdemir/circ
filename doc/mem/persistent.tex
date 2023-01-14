@@ -48,8 +48,10 @@
   \2 goal: define access-order and index-order transcripts, and ensure they're
   permutations of one another
   \2 $T$: number of entries ($3A$)
-  \2 entries: (value, idx, time, write?, create?)
+  \2 entries: (value, idx, time, write?, create?, active?)
     \3 create is a bit that is set if this is an access writing from the initial persistent RAM
+    \3 active is a bit that is set if this \textbf{write} is active (it's always set for reads)
+      \4 if inactive, this write has no effect.
     \3 times are in $[A+1]$, not $[3A]$
       \4 accesses from $R$ gets times in $[A]$, as standard
       \4 all initial writes to have time 0
@@ -58,8 +60,8 @@
   \2 witness: $\vec f$: the transcript ordered on index and then time
   \2 challenge $\alpha$
   \2 compute $\vec e'$ with element-wise coefficient hash over $\vec e$ keyed on $\alpha$.
-    \3 The computations is something like $v + \alpha i + k_2 \alpha^2 + w \alpha^3 + k_4 \alpha^4$
-      \4: $w$: is write
+    \3 The computations is something like $v + \alpha i + k_2 \alpha^2 + w \alpha^3 + k_4 \alpha^4 + k_5 \alpha^5$
+      \4 $w$ is write
     \3 The $k$'s are all fixed
     \3 \csPerT{2} - \csPerA{2}
       \4 the minus is b/c the $w$s are fixed
@@ -67,7 +69,7 @@
     \3 Furthermore, the single non-linear product $\alpha i$ is shared with the
     hashes needed for coalescing.
   \2 compute $\vec f'$ similarly from $\vec f$
-    \3 \csPerT{4} for hashing
+    \3 \csPerT{5} for hashing
     \3 the hash ensures well-formedness for booleans
   \2 challenge $\beta$
   \2 permutation argument for $\vec e', \vec f'$ (key $\beta$)
@@ -79,11 +81,13 @@
       \4 with no writing to fresh indices
 \1 checking the index-order transcript
   \2 goal: check array semantics (modulo residual range checks)
-  \2 Refer to one entry as $(v, i, t, w, c)$ and the next as $(v', i', t', w', c')$
+  \2 Refer to one entry as $(v, i, t, w, c, a)$ and the next as $(v', i', t', w', c', a')$
+  \2 First, redef $w'$ to be $w'$ if $a=1$, else $w$
+    \3 \csPerT{1}
   \2 Recall that the ranges of each value are ensured by hashing
     \3 $i \in [N]$
     \3 $t \in [A+1]$
-    \3 $w, c \in \zo$
+    \3 $w, c, a \in \zo$
   \2 rules:
     \3 start with a create
     \3 $t$ grows or next $c=1$
@@ -109,7 +113,7 @@
 \1 Accounting
   \2 two verifier challenges ($\alpha,\beta$)
   \2 \csPerN{4}
-  \2 \csPerA{43}
+  \2 \csPerA{49}
     \3 The cost of a linear scan (per element scanned) is $3$ by my reckoning
     \3 So if $A < 43/3 < 15$, you should do linear scans instead.
 \end{outline}

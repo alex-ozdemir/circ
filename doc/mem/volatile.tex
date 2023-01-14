@@ -10,25 +10,28 @@
 \1 build the main transcript
   \2 goal: define access-order and index-order transcripts, and ensure they're
   permutations of one another
-  \2 entries: (value, idx, time, write?) $(v, i, t, w)$
-    \3 create is a bit that is set if this is an access writing from the initial persistent RAM
+  \2 entries: (value, idx, time, write?, active?) $(v, i, t, w, a)$
+    \3 write indicates read/write.
+    \3 active is a bit that is set for a write if it takes effect; otherwise, it has no effect. It is always set for reads.
     \3 times are in $[A]$
   \2 $\vec a$: time-order access sequence
   \2 witness: $\vec b$: index-order access sequence
   \2 challenge $\alpha$
   \2 compute $\vec a'$: coefficient-hashes of time-order accesses with key
   $\alpha$.
-    \3 Since time is fixed, \csPerA{2}.
+    \3 Since time and write are fixed, \csPerA{2}.
   \2 compute $\vec b'$: same for $\vec b$
-    \3 \csPerA{3}
+    \3 \csPerA{4}
   \2 challenge $\beta$, use root-hash to do permutation argument
     \3 \csPerA{2}
 \1 check the index-order transcript
-  \2 adjacent entries: $(v, i, t, w)$ and then $(v', i', t', w')$
+  \2 adjacent entries: $(v, i, t, w, a)$ and then $(v', i', t', w', a')$
   \2 rules:
     \3 (A) values can change only if indices do, or if $w'=0$
     \3 (B) times increase, or indices change
     \3 (C) first indices in index-constant blocks are unique
+  \2 first, redef $w'$ to $w'$ is $a$, else $w$.
+    \3 \csPerA{1}
   \2 witness sequence $\vec d$ that indicates index change
     \3 defined by $d_0=1$ and $d'=1$ if $i \ne i'$, else $d'=0$
     \3 cost: \csPerA{2}
@@ -61,6 +64,6 @@
   \2 check const-or-plus-1 \csPerA{2}
   \2 permutation check $(\beta)$ \csPerA{4}
 \1 accounting
-  \2 \csPerA{24}
+  \2 \csPerA{26}
 \end{outline}
 
