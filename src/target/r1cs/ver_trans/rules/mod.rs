@@ -319,7 +319,7 @@ impl Encoding for Enc {
         }
     }
 
-    fn map<F: Fn(Term) -> Term>(self, f: F) -> Self {
+    fn map<F: FnMut(Term) -> Term>(self, mut f: F) -> Self {
         match self {
             Enc::Bit(b) => Enc::Bit(f(b)),
             Enc::Bits(bs) => Enc::Bits(bs.into_iter().map(f).collect()),

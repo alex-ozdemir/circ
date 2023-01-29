@@ -57,7 +57,17 @@ pub trait Encoding: Clone + Debug {
     fn const_(f: &FieldT, const_t: &Term) -> Self;
 
     /// Apply this function to all terms.
-    fn map<F: Fn(Term) -> Term>(self, f: F) -> Self;
+    fn map<F: FnMut(Term) -> Term>(self, f: F) -> Self;
+
+    /// Get all terms
+    fn terms(&self) -> Vec<Term> {
+        let mut ts = Vec::new();
+        self.clone().map(|t| {
+            ts.push(t.clone());
+            t
+        });
+        ts
+    }
 }
 
 /// How inputs should be encoded for a [Rule].

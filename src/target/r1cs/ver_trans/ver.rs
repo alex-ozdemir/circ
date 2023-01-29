@@ -86,6 +86,18 @@ pub trait VerifiableEncoding: Encoding {
     /// We'll generate VCs to test uniqueness.
     fn from_term(t: Term, ty: Self::Type, f: &FieldT) -> Self;
 
+    /// Are these two encodings equal?
+    fn eq(&self, other: &Self) -> Term {
+        term(
+            AND,
+            self.terms()
+                .into_iter()
+                .zip(other.terms())
+                .map(|(s, o)| term![EQ; s, o])
+                .collect(),
+        )
+    }
+
     /// Give the (unique) term this valid encoding is for.
     ///
     /// We'll generate VCs to test uniqueness.
@@ -280,13 +292,19 @@ pub trait VerifiableEncoding: Encoding {
             .into_iter()
             .flat_map(|(sort, ty)| {
                 let x = Self::floating("x", ty, &bnd.field, &sort);
+                let y = Self::floating("y", ty, &bnd.field, &sort);
                 let a = leaf_term(Op::Var("a".into(), sort.clone()));
                 let b = leaf_term(Op::Var("b".into(), sort.clone()));
+                let uniq_enc = term![IMPLIES; term![AND; x.is_valid(a.clone()), y.is_valid(a.clone())], x.eq(&y)];
+                let uniq_term = term![IMPLIES; term![AND; x.is_valid(a.clone()), x.is_valid(b.clone())], term![EQ; a.clone(), b.clone()]];
+                let from_a = Self::from_term(a.clone(), ty, &bnd.field);
+                let from_cor = term![IMPLIES; x.is_valid(a.clone()), from_a.eq(&x)];
+                let to_cor = term![IMPLIES; x.is_valid(a.clone()), term![EQ; x.to_term(), a.clone()]];
                 vec![
-                    Vc::valid(Complete, Rt::Uniq, Self::from_term(a.clone(), ty, &bnd.field).is_valid(a.clone())).sort(&sort).from(ty),
-                    Vc::valid(Complete, Rt::Uniq, term![EQ; Self::from_term(a.clone(), ty, &bnd.field).to_term(), a.clone()]).sort(&sort).from(ty),
-                    Vc::valid(Sound, Rt::Uniq, term![IMPLIES; term![AND; x.is_valid(a.clone()), x.is_valid(b.clone())], term![EQ; a, b]]).sort(&sort).from(ty)
-
+                    Vc::valid(Sound, Rt::UniqEnc, uniq_enc).sort(&sort).from(ty),
+                    Vc::valid(Sound, Rt::UniqTerm, uniq_term).sort(&sort).from(ty),
+                    Vc::valid(Sound, Rt::FromTerm, from_cor).sort(&sort).from(ty),
+                    Vc::valid(Sound, Rt::ToTerm, to_cor).sort(&sort).from(ty),
                 ]
             }).collect()
     }
@@ -342,7 +360,13 @@ pub enum RuleType {
     /// equality assertion
     Eq,
     /// validity uniqueness
-    Uniq,
+    UniqEnc,
+    /// validity uniqueness
+    UniqTerm,
+    /// from term correctness
+    FromTerm,
+    /// to term correctness
+    ToTerm,
 }
 use RuleType as Rt;
 
