@@ -70,6 +70,19 @@ impl<E: VerifiableEncoding> Builder<E> {
         }
         extras::substitute_cache(t, &mut self.subs)
     }
+
+    /// Substitute, public only.
+    fn pub_sub(&mut self, t: &Term) -> Term {
+        for (val, name, is_pub) in take(&mut self.ctx.new_variables) {
+            if is_pub {
+                let val_s = extras::substitute_cache(&val, &mut self.subs);
+                let sort = check(&val_s);
+                let var = leaf_term(Op::Var(name.clone(), sort));
+                assert!(self.subs.insert(var, val_s).is_none());
+            }
+        }
+        extras::substitute_cache(t, &mut self.subs)
+    }
 }
 
 /// An encoding scheme with formalized semantics.
@@ -125,12 +138,13 @@ pub trait VerifiableEncoding: Encoding {
         for sort in Self::sorts(bnd) {
             for public in [false, true] {
                 for prop in [Sound, Complete] {
-                    if !(prop == Sound && public) {
                         let mut b = Builder::<Self>::new(&bnd);
                         let name = "a".to_owned();
                         let (_, _, valid, sat) = b.new_enc(&name, &sort, None, public);
                         let condition = if prop.trust() {
                             b.sub(&term![AND; valid, sat])
+                        } else if public {
+                            b.pub_sub(&term![IMPLIES; sat.clone(), valid])
                         } else {
                             let some_valid = term![Op::Quant(Quant {
                                     ty: QuantType::Exists,
@@ -143,7 +157,6 @@ pub trait VerifiableEncoding: Encoding {
                                 .sort(&sort)
                                 .public(public),
                         )
-                    }
                 }
             }
         }
