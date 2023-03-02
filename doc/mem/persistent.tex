@@ -31,16 +31,16 @@
   \2 compute $\vec c'$, a length $N$ vector
     \3 First $A$ entries: root-hashes, similarly from $\vec c$.
       \4 $v + \alpha i$
-      \4 This would be $A$ constraints, but it's shared with the main
-      transcript's coefficient hashes, so it's free.
+      \4 \csPerA{1} (could share with main?)
     \3 For the rest, hashes of other $\vec a$ entries, in original order (witness)
   \2 compute $\vec d'$ similarly, from $\vec d$ and $\vec b$.
-    \3 Free, as above.
+    \3 \csPerA{1}
   \2 challenge $\beta$
   \2 equate last $N-A$ entries of $\vec c'$ and $\vec d'$.
     \3 free (linear)
   \2 permutation arguments for $\vec a', \vec c'$ and $\vec b', \vec d'$ (key $\beta$)
-    \3 \csPerN{4}
+    \3 \csPerN{3} + \csPerA{2}
+    \3 because some is shared.
   \2 outputs
     \3 $\vec c$ initial index-value pairs
     \3 $\vec d$ final index-value pairs
@@ -112,8 +112,9 @@
     \3 \csPerA{8}
 \1 Accounting
   \2 two verifier challenges ($\alpha,\beta$)
-  \2 \csPerN{4}
-  \2 \csPerA{49}
+  \2 \csPerN{3}
+    \3 plus an extra MSM of size $2\cdot N$.
+  \2 \csPerA{53}
     \3 The cost of a linear scan (per element scanned) is $3$ by my reckoning
-    \3 So if $A < 43/3 < 15$, you should do linear scans instead.
+    \3 So if $A < 53/3 < 18$, you should do linear scans instead.
 \end{outline}
