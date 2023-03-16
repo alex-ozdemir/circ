@@ -1,0 +1,58 @@
+#!/usr/bin/env zsh
+
+set -e
+
+disable -r time
+
+cargo build --release --features 'bellman smt zok poly' --example circ
+
+MODE=release # debug or release
+BIN=./target/$MODE/examples/circ
+
+csv=$1
+if [[ -z $csv ]]
+then
+    echo "first argument: output CSV path"
+    exit 2
+fi
+
+function bench {
+    benchmark="./examples/ZoKrates/pf/mem/persist_1000.zok"
+    name=${benchmark:t}
+    size=$1
+    accs=$2
+    tmp=$(mktemp "/tmp/${name}.XXXXXXXXX.zok")
+    cat ./examples/ZoKrates/pf/mem/persist_1000.zok \
+        | sed "s/ACC = [[:digit:]]\+/ACC = $accs/" \
+        | sed "s/LEN = [[:digit:]]\+/LEN = $size/" \
+        > $tmp
+    output=$(time -f "Time (s): %e\nMRSS (kB): %M" $BIN --ram true $tmp r1cs --proof-impl mirage |& cat)
+    rm -f $tmp
+    echo "$output"
+    cs=$(echo "$output" | rg 'Final R1cs size: (\d+)' -o -r '$1')
+    mem=$(echo "$output" | rg 'MRSS \(kB\): (\d+)' -o -r '$1')
+    ctime=$(echo "$output" | rg 'Time \(s\): (\d+.?\d*)' -o -r '$1')
+    echo "$name,$size,$accs,$cs,$mem,$ctime" >> $csv
+}
+
+echo "name,size,accs,cs,kbytes,seconds" > $csv
+bench 100 10
+bench 1000 10
+bench 10000 10
+bench 100000 10
+bench 1000000 10
+bench 100 100
+bench 1000 100
+bench 10000 100
+bench 100000 100
+bench 1000000 100
+bench 100 1000
+bench 1000 1000
+bench 10000 1000
+bench 100000 1000
+#bench 1000000 1000 ; memory: >25GB
+bench 100 10000
+bench 1000 10000
+bench 10000 10000
+bench 100000 10000
+#bench 1000000 10000 ; memory: >25GB

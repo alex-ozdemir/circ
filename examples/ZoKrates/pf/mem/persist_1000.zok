@@ -1,0 +1,11 @@
+// persistent RAM
+
+const u32 LEN = 10000
+const field ACC = 1000
+
+def main(committed field[LEN] array, private field x) -> field:
+    field acc = 0
+    for field i in 0..ACC do
+        acc = acc + array[x + i]
+    endfor
+    return acc
