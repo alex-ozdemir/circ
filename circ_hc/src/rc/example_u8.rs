@@ -2,12 +2,14 @@
 use fxhash::FxHashMap as HashMap;
 
 use crate::Id;
+use datasize::DataSize;
 use std::borrow::Borrow;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::thread_local;
 
 #[allow(dead_code)]
+#[derive(DataSize)]
 struct NodeData {
     op: u8,
     cs: Box<[Node]>,
@@ -15,7 +17,7 @@ struct NodeData {
 
 struct NodeDataRef<'a, Q: Borrow<[Node]>>(&'a u8, &'a Q);
 
-#[derive(Clone)]
+#[derive(Clone, DataSize)]
 pub struct Node {
     data: Rc<NodeData>,
     id: Id,
@@ -249,6 +251,16 @@ pub struct Weak {
     id: Id,
 }
 
+impl DataSize for Weak {
+    const IS_DYNAMIC: bool = false;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        0
+    }
+}
+
 impl crate::Weak<u8> for Weak {
     type Node = Node;
 
@@ -353,9 +365,11 @@ mod cmp {
 
 impl std::ops::Drop for Manager {
     fn drop(&mut self) {
-        // If we just drop everything in the table, then that can lead to deep Rc::drop recursions.
+        // If we just drop everything in the table, there can be deep Rc::drop recursions.
         //
         // If we run GC, then hopefully we avoid that.
+        //
+        // However, running GC takes a long time. This could probably be improved.
         self.force_gc();
     }
 }

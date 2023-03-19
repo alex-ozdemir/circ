@@ -4,6 +4,7 @@ macro_rules! generate_hashcons_rc {
     ($Op:ty) => {
         use fxhash::FxHashMap as HashMap;
 
+        use datasize::DataSize;
         use std::borrow::Borrow;
         use std::cell::{Cell, RefCell};
         use std::rc::Rc;
@@ -11,6 +12,7 @@ macro_rules! generate_hashcons_rc {
         use $crate::Id;
 
         #[allow(dead_code)]
+        #[derive(DataSize)]
         struct NodeData {
             op: $Op,
             cs: Box<[Node]>,
@@ -18,7 +20,7 @@ macro_rules! generate_hashcons_rc {
 
         struct NodeDataRef<'a, Q: Borrow<[Node]>>(&'a $Op, &'a Q);
 
-        #[derive(Clone)]
+        #[derive(Clone, DataSize)]
         pub struct Node {
             data: Rc<NodeData>,
             id: Id,
@@ -252,6 +254,16 @@ macro_rules! generate_hashcons_rc {
             id: Id,
         }
 
+        impl DataSize for Weak {
+            const IS_DYNAMIC: bool = false;
+
+            const STATIC_HEAP_SIZE: usize = 0;
+
+            fn estimate_heap_size(&self) -> usize {
+                0
+            }
+        }
+
         impl $crate::Weak<$Op> for Weak {
             type Node = Node;
 
@@ -356,9 +368,11 @@ macro_rules! generate_hashcons_rc {
 
         impl std::ops::Drop for Manager {
             fn drop(&mut self) {
-                // If we just drop everything in the table, then that can lead to deep Rc::drop recursions.
+                // If we just drop everything in the table, there can be deep Rc::drop recursions.
                 //
                 // If we run GC, then hopefully we avoid that.
+                //
+                // However, running GC takes a long time. This could probably be improved.
                 self.force_gc();
             }
         }

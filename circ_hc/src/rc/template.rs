@@ -1,6 +1,7 @@
 use fxhash::FxHashMap as HashMap;
 
 use crate::Id;
+use datasize::DataSize;
 use std::borrow::Borrow;
 use std::cell::{Cell, RefCell};
 use std::net::SocketAddrV6 as TemplateOp;
@@ -8,6 +9,7 @@ use std::rc::Rc;
 use std::thread_local;
 
 #[allow(dead_code)]
+#[derive(DataSize)]
 struct NodeData {
     op: TemplateOp,
     cs: Box<[Node]>,
@@ -15,7 +17,7 @@ struct NodeData {
 
 struct NodeDataRef<'a, Q: Borrow<[Node]>>(&'a TemplateOp, &'a Q);
 
-#[derive(Clone)]
+#[derive(Clone, DataSize)]
 pub struct Node {
     data: Rc<NodeData>,
     id: Id,
@@ -247,6 +249,16 @@ impl crate::Node<TemplateOp> for Node {
 pub struct Weak {
     data: std::rc::Weak<NodeData>,
     id: Id,
+}
+
+impl DataSize for Weak {
+    const IS_DYNAMIC: bool = false;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        0
+    }
 }
 
 impl crate::Weak<TemplateOp> for Weak {

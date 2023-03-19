@@ -14,6 +14,7 @@ default = ["hashconsing", "lru", "raw", "rc"]
 fxhash = "0.2.1"
 hashconsing = { git = "https://github.com/alex-ozdemir/hashconsing.git", branch = "phash", optional = true }
 lru = { version = "0.7.2", optional = true }
+datasize = { version = "0.2", features = ["detailed"] }
 
 [dev-dependencies]
 quickcheck = "1"

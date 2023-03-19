@@ -1,3 +1,5 @@
+use datasize::DataSize;
+
 use std::cmp::{Eq, Ord, PartialEq, PartialOrd};
 use std::hash::Hash;
 
@@ -88,7 +90,7 @@ pub trait Weak<Op>: Sized + Clone + PartialEq + Eq + PartialOrd + Ord + Hash {
 
 /// A unique term ID.
 #[repr(transparent)]
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, DataSize)]
 pub struct Id(pub u64);
 
 impl std::fmt::Display for Id {
