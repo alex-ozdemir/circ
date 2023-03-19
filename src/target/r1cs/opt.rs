@@ -1,8 +1,8 @@
 //! Optimizations over R1CS
 use fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
-use log::debug;
+use log::trace;
 
-use std::collections::hash_map::Entry;
+// use std::collections::hash_map::Entry;
 
 use super::*;
 use crate::cfg::CircCfg;
@@ -37,7 +37,7 @@ impl LinReducer {
         let mut uses: HashMap<Var, HashSet<usize>> =
             HashMap::with_capacity_and_hasher(r1cs.num_vars(), Default::default());
         let mut add = |i: usize, y: &Lc| {
-            for x in y.monomials.keys() {
+            for (x, _) in &y.monomials {
                 uses.get_mut(x).map(|m| m.insert(i)).or_else(|| {
                     let mut m: HashSet<usize> = Default::default();
                     m.insert(i);
@@ -61,28 +61,30 @@ impl LinReducer {
         let (a, b, c) = &mut self.r1cs.constraints[con_id];
         let uses = &mut self.uses;
         let mut do_in = |a: &mut Lc| {
-            if let Some(sc) = a.monomials.remove(&var) {
-                assert_eq!(&a.modulus, &val.modulus);
+            if let Some(sc) = a.remove(&var) {
+                assert_eq!(&a.ty(), &val.ty());
                 a.constant += sc.clone() * &val.constant;
                 let tot = a.monomials.len() + val.monomials.len();
                 if tot > a.monomials.capacity() {
                     a.monomials.reserve(tot - a.monomials.capacity());
                 }
                 for (i, v) in &val.monomials {
-                    match a.monomials.entry(*i) {
-                        Entry::Occupied(mut e) => {
-                            let m = e.get_mut();
-                            *m += sc.clone() * v;
-                            if e.get().is_zero() {
-                                uses.get_mut(i).unwrap().remove(&con_id);
-                                e.remove_entry();
-                            }
-                        }
-                        Entry::Vacant(e) => {
-                            e.insert(sc.clone() * v);
-                            uses.get_mut(i).unwrap().insert(con_id);
-                        }
-                    }
+                    a.insert(i.clone(), v.clone() * &sc);
+                    uses.get_mut(i).unwrap().insert(con_id);
+//                    match a.monomials.entry(*i) {
+//                        Entry::Occupied(mut e) => {
+//                            let m = e.get_mut();
+//                            *m += sc.clone() * v;
+//                            if e.get().is_zero() {
+//                                uses.get_mut(i).unwrap().remove(&con_id);
+//                                e.remove_entry();
+//                            }
+//                        }
+//                        Entry::Vacant(e) => {
+//                            e.insert(sc.clone() * v);
+//                            uses.get_mut(i).unwrap().insert(con_id);
+//                        }
+//                    }
                 }
                 true
             } else {
@@ -101,15 +103,15 @@ impl LinReducer {
     }
 
     fn clear_constraint(&mut self, i: usize) {
-        for v in self.r1cs.constraints[i].0.monomials.keys() {
+        for (v, _) in & self.r1cs.constraints[i].0.monomials {
             self.uses.get_mut(v).unwrap().remove(&i);
         }
         self.r1cs.constraints[i].0.clear();
-        for v in self.r1cs.constraints[i].1.monomials.keys() {
+        for (v, _) in & self.r1cs.constraints[i].1.monomials {
             self.uses.get_mut(v).unwrap().remove(&i);
         }
         self.r1cs.constraints[i].1.clear();
-        for v in self.r1cs.constraints[i].2.monomials.keys() {
+        for (v, _) in & self.r1cs.constraints[i].2.monomials {
             self.uses.get_mut(v).unwrap().remove(&i);
         }
         self.r1cs.constraints[i].2.clear();
@@ -119,7 +121,7 @@ impl LinReducer {
         while let Some(con_id) = self.queue.pop() {
             if let Some((var, lc)) = as_linear_sub(&self.r1cs.constraints[con_id], &self.r1cs) {
                 if lc.monomials.len() < self.lc_size_thresh {
-                    debug!(
+                    trace!(
                         "Elim: {} -> {}",
                         self.r1cs.idx_to_sig.get_fwd(&var).unwrap(),
                         self.r1cs.format_lc(&lc)
@@ -146,10 +148,10 @@ impl LinReducer {
 
 fn as_linear_sub((a, b, c): &(Lc, Lc, Lc), r1cs: &R1cs) -> Option<(Var, Lc)> {
     if a.is_zero() || b.is_zero() {
-        for i in c.monomials.keys() {
+        for (j, (i, _)) in c.monomials.iter().enumerate() {
             if r1cs.can_eliminate(*i) {
                 let mut lc = c.clone();
-                let v = lc.monomials.remove(i).unwrap();
+                let v = lc.monomials.remove(j).1;
                 lc *= v.recip();
                 return Some((*i, -lc));
             }

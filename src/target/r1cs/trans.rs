@@ -10,6 +10,7 @@ use crate::target::r1cs::*;
 
 use circ_fields::FieldT;
 use circ_opt::FieldDivByZero;
+use datasize::DataSize;
 use log::debug;
 use rug::ops::Pow;
 use rug::Integer;
@@ -19,6 +20,7 @@ use std::fmt::Display;
 use std::iter::ExactSizeIterator;
 use std::rc::Rc;
 
+#[derive(DataSize)]
 struct BvEntry {
     width: usize,
     /// Empty if not yet created.
@@ -27,16 +29,41 @@ struct BvEntry {
     bits: Vec<TermLc>,
 }
 
-#[derive(Clone)]
+impl BvEntry {
+    #[allow(dead_code)]
+    fn for_each_lc(&self, mut f: impl FnMut(&Lc)) {
+        if let Some(u) = self.uint.as_ref() {
+            f(&u.1);
+        }
+        for b in &self.bits {
+            f(&b.1);
+        }
+    }
+}
+
+#[derive(Clone, DataSize)]
 enum EmbeddedTerm {
     Bv(Rc<RefCell<BvEntry>>),
     Bool(TermLc),
     Field(TermLc),
-    #[allow(dead_code)]
-    Tuple(Vec<EmbeddedTerm>),
 }
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+impl EmbeddedTerm {
+    #[allow(dead_code)]
+    fn for_each_lc(&self, mut f: impl FnMut(&Lc)) {
+        match self {
+            EmbeddedTerm::Bv(x) => x.borrow().for_each_lc(f),
+            EmbeddedTerm::Bool(x) => {
+                f(&x.1);
+            }
+            EmbeddedTerm::Field(x) => {
+                f(&x.1);
+            }
+        }
+    }
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, DataSize)]
 struct Metric {
     n_constraints: u32,
     n_vars: u32,
@@ -49,6 +76,7 @@ impl std::ops::AddAssign<&Metric> for Metric {
     }
 }
 
+#[derive(DataSize)]
 struct ToR1cs<'cfg> {
     r1cs: R1cs,
     cache: TermMap<EmbeddedTerm>,
@@ -148,6 +176,18 @@ impl<'cfg> ToR1cs<'cfg> {
         }
     }
 
+    #[allow(dead_code)]
+    fn for_each_lc(&self, mut f: impl FnMut(&Lc)) {
+        for (a, b, c) in self.r1cs.constraints() {
+            f(a);
+            f(b);
+            f(c);
+        }
+        for embedding in self.cache.values() {
+            embedding.for_each_lc(&mut f)
+        }
+    }
+
     /// Create a committed witness vector. Each input is a (name, term) pair.
     fn committed_wit(&mut self, elements: Vec<(String, Term)>) {
         self.r1cs.add_committed_witness(elements.clone());
@@ -174,7 +214,7 @@ impl<'cfg> ToR1cs<'cfg> {
         debug_assert!(matches!(check(&comp), Sort::Field(_)));
         self.r1cs.add_var(n.clone(), comp.clone(), ty);
         self.metric.n_vars += 1;
-        debug!("fresh: {n:?}");
+        trace!("fresh: {n:?}");
         TermLc(comp, self.r1cs.signal_lc(&n))
     }
 
@@ -260,7 +300,7 @@ impl<'cfg> ToR1cs<'cfg> {
         n: usize,
         signed: bool,
     ) -> Vec<TermLc> {
-        debug!("Bitify({}): {}", n, self.r1cs.format_lc(&x.1));
+        trace!("Bitify({}): {}", n, self.r1cs.format_lc(&x.1));
         let bits = self.decomp(d, x, n);
         let sum = self.debitify(bits.iter().cloned(), signed);
         self.assert_zero(sum - x);
@@ -407,22 +447,16 @@ impl<'cfg> ToR1cs<'cfg> {
     }
 
     fn embed(&mut self, t: Term) {
-        debug!("Embed: {}", t);
+        trace!("Embed: {}", t);
         let visited_set_rc = self.embed.clone();
         for c in
             extras::PostOrderSkipIter::new(t, &move |s: &Term| visited_set_rc.borrow().contains(s))
         {
             assert!(!self.embed.borrow().contains(&c));
-            debug!("Embed op: {}", c.op());
+            trace!("Embed op: {}", c.op());
             // Handle field access once and for all
-            if let Op::Field(i) = &c.op() {
-                // Need to borrow self in between search and insert. Could refactor.
-                #[allow(clippy::map_entry)]
-                if !self.cache.contains_key(&c) {
-                    let t = self.get_field(&c.cs()[0], *i);
-                    self.embed.borrow_mut().insert(c.clone());
-                    self.cache.insert(c, t);
-                }
+            if let Op::Field(_) = &c.op() {
+                panic!()
             } else {
                 self.profile_start_term(c.clone());
                 match check(&c) {
@@ -443,13 +477,6 @@ impl<'cfg> ToR1cs<'cfg> {
                 }
                 self.profile_end_term();
             }
-        }
-    }
-
-    fn get_field(&self, tuple_term: &Term, field: usize) -> EmbeddedTerm {
-        match self.cache.get(tuple_term) {
-            Some(EmbeddedTerm::Tuple(v)) => v[field].clone(),
-            _ => panic!("No tuple for {}", tuple_term),
         }
     }
 
@@ -578,7 +605,7 @@ impl<'cfg> ToR1cs<'cfg> {
             };
             self.cache.insert(c.clone(), EmbeddedTerm::Bool(lc));
         }
-        debug!("=> {}", self.r1cs.format_lc(&self.get_bool(&c).1));
+        trace!("=> {}", self.r1cs.format_lc(&self.get_bool(&c).1));
 
         //        self.r1cs.eval(self.bools.get(&c).unwrap()).map(|v| {
         //            println!("-> {}", v);
@@ -1027,7 +1054,7 @@ impl<'cfg> ToR1cs<'cfg> {
         //println!("Embed: {}", c);
         // TODO: skip if already embedded
         if !self.cache.contains_key(&c) {
-            debug!("embed_pf {}", c);
+            trace!("embed_pf {}", c);
             let lc = match &c.op() {
                 Op::Var(..) => panic!("call embed_var instead"),
                 Op::Const(Value::Field(r)) => TermLc(
@@ -1103,7 +1130,7 @@ impl<'cfg> ToR1cs<'cfg> {
         self.constraint(self.r1cs.zero(), self.r1cs.zero(), x.1);
     }
     fn assert(&mut self, t: Term) {
-        debug!("Assert: {}", t);
+        trace!("Assert: {}", t);
         debug_assert!(check(&t) == Sort::Bool, "Non bool in assert");
         self.assert_bool(&t);
     }
@@ -1156,6 +1183,26 @@ pub fn to_r1cs(cs: &Computation, cfg: &CircCfg) -> R1cs {
     for c in &cs.outputs {
         converter.assert(c.clone());
     }
+    debug!(
+        "Size of R1CS converter: {}B",
+        converter.estimate_heap_size()
+    );
+    debug!(
+        "Size of R1CS converter: {:#?}",
+        converter.estimate_detailed_heap_size()
+    );
+//    converter.for_each_lc(|lc| println!("LC {}", converter.r1cs.format_lc(lc)));
+//    converter.for_each_lc(|lc| println!("LCLEN {}", lc.monomials.len()));
+//    converter.for_each_lc(|lc| println!("LCCONST {}", lc.constant));
+//    converter.for_each_lc(|lc| {
+//        println!("LCCOEFF {}", lc.constant);
+//        for (_, v) in &lc.monomials {
+//            println!("LCCOEFF {}", v);
+//        }
+//    });
+//    converter.for_each_lc(|lc| {
+//        println!("LCSIZE {}", std::mem::size_of::<Lc>() + lc.estimate_heap_size());
+//    });
     converter.profile_print();
     converter.r1cs
 }

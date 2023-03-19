@@ -3,13 +3,14 @@
 use super::ty::TypeErrorReason;
 use super::{Sort, Term, Value};
 use circ_hc::Node;
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 mod poly;
 mod ram;
 mod sort;
 
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, DataSize)]
 /// An extension operator. Not externally supported.
 ///
 /// Often evaluatable, but not compilable.

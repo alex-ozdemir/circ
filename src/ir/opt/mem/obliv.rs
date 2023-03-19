@@ -73,7 +73,7 @@ use super::super::visit::*;
 use crate::ir::term::extras::as_uint_constant;
 use crate::ir::term::*;
 
-use log::debug;
+use log::trace;
 
 struct NonOblivComputer {
     not_obliv: TermSet,
@@ -82,7 +82,7 @@ struct NonOblivComputer {
 impl NonOblivComputer {
     fn mark(&mut self, a: &Term) -> bool {
         if !a.is_const() && self.not_obliv.insert(a.clone()) {
-            debug!("Not obliv: {}", a);
+            trace!("Not obliv: {}", a);
             true
         } else {
             false
@@ -262,7 +262,7 @@ impl RewritePass for Replacer {
         orig: &Term,
         rewritten_children: F,
     ) -> Option<Term> {
-        //debug!("Visit {}", extras::Letified(orig.clone()));
+        //trace!("Visit {}", extras::Letified(orig.clone()));
         let get_cs = || -> Vec<Term> {
             rewritten_children()
                 .into_iter()

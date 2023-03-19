@@ -1,7 +1,7 @@
 // persistent RAM
 
-const u32 LEN = 10000
-const field ACC = 1000
+const u32 LEN = 5000
+const field ACC = 500
 
 def main(committed field[LEN] array, private field x) -> field:
     field acc = 0

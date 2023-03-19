@@ -48,6 +48,7 @@ use circ::target::r1cs::{opt::reduce_linearities, trans::to_r1cs};
 #[cfg(feature = "smt")]
 use circ::target::smt::find_model;
 use circ_fields::FieldT;
+use datasize::DataSize;
 use fxhash::FxHashMap as HashMap;
 #[cfg(feature = "lp")]
 use good_lp::default_solver;
@@ -302,9 +303,11 @@ fn main() {
             trace!("IR: {}", circ::ir::term::text::serialize_computation(cs));
             let mut r1cs = to_r1cs(cs, cfg());
 
+            println!("Pre-opt R1cs size: {}B", r1cs.estimate_heap_size());
             println!("Pre-opt R1cs size: {}", r1cs.constraints().len());
             r1cs = reduce_linearities(r1cs, cfg());
 
+            println!("Final R1cs size: {}B", r1cs.estimate_heap_size());
             println!("Final R1cs size: {}", r1cs.constraints().len());
             let (prover_data, verifier_data) = r1cs.finalize(cs);
             match action {

@@ -25,6 +25,7 @@ use crate::cfg::cfg_or_default as cfg;
 use circ_fields::{FieldT, FieldV};
 pub use circ_hc::{Node, Table, Weak};
 use circ_opt::FieldToBv;
+use datasize::DataSize;
 use fxhash::{FxHashMap, FxHashSet};
 use log::{debug, trace};
 use rug::Integer;
@@ -42,6 +43,7 @@ pub mod fmt;
 pub mod lin;
 pub mod precomp;
 pub mod serde_mods;
+pub mod size;
 pub mod text;
 pub mod ty;
 
@@ -319,7 +321,7 @@ impl Op {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Boolean n-ary operator
 pub enum BoolNaryOp {
     /// Boolean AND
@@ -340,7 +342,7 @@ impl Display for BoolNaryOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Bit-vector binary operator
 pub enum BvBinOp {
     /// Bit-vector (-)
@@ -370,7 +372,7 @@ impl Display for BvBinOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Bit-vector binary predicate
 pub enum BvBinPred {
     // TODO: add overflow predicates.
@@ -407,7 +409,7 @@ impl Display for BvBinPred {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Bit-vector n-ary operator
 pub enum BvNaryOp {
     /// Bit-vector (+)
@@ -434,7 +436,7 @@ impl Display for BvNaryOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Bit-vector unary operator
 pub enum BvUnOp {
     /// Bit-vector bitwise not
@@ -452,7 +454,7 @@ impl Display for BvUnOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Floating-point binary operator
 pub enum FpBinOp {
     /// Floating-point (+)
@@ -485,7 +487,7 @@ impl Display for FpBinOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Floating-point unary operator
 pub enum FpUnOp {
     /// Floating-point unary negation
@@ -509,7 +511,7 @@ impl Display for FpUnOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Floating-point binary predicate
 pub enum FpBinPred {
     /// Floating-point (<=)
@@ -536,7 +538,7 @@ impl Display for FpBinPred {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Floating-point unary predicate
 pub enum FpUnPred {
     /// Is this normal?
@@ -569,7 +571,7 @@ impl Display for FpUnPred {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Finite field n-ary operator
 pub enum PfNaryOp {
     /// Finite field (+)
@@ -587,7 +589,7 @@ impl Display for PfNaryOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Finite field n-ary operator
 pub enum PfUnOp {
     /// Finite field negation
@@ -605,7 +607,7 @@ impl Display for PfUnOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Integer n-ary operator
 pub enum IntNaryOp {
     /// Finite field (+)
@@ -623,7 +625,7 @@ impl Display for IntNaryOp {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy, Serialize, Deserialize, DataSize)]
 /// Integer binary predicate. See [Op::Eq] for equality.
 pub enum IntBinPred {
     /// Integer (<)

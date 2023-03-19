@@ -1,11 +1,13 @@
 //! Rank 1 Constraint Systems
 
 use circ_fields::{FieldT, FieldV};
+use datasize::DataSize;
 use fxhash::{FxHashMap as HashMap, FxHashSet as HashSet};
-use log::{debug, trace};
+use log::trace;
 use paste::paste;
 use rug::Integer;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -22,7 +24,7 @@ pub mod spartan;
 pub mod trans;
 pub mod wit_comp;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, DataSize)]
 /// A Rank 1 Constraint System.
 ///
 /// Extended to comprehend witness commitments and verifier challenges.
@@ -133,12 +135,14 @@ pub struct R1cs {
 
     /// Terms for computing them.
     #[serde(with = "crate::ir::term::serde_mods::map")]
+    #[data_size(with = crate::ir::term::size::ignore)]
     terms: HashMap<Var, Term>,
+    #[data_size(with = crate::ir::term::size::ignore)]
     precompute: precomp::PreComp,
 }
 
 /// An assembled R1CS relation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, DataSize)]
 pub struct R1csFinal {
     field: FieldT,
     vars: Vec<Var>,
@@ -149,14 +153,15 @@ pub struct R1csFinal {
 }
 
 /// A variable
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, DataSize)]
 #[repr(transparent)]
-pub struct Var(usize);
+pub struct Var(u32);
 
 impl Var {
-    const NUMBER_BITS: u32 = usize::BITS - 3;
-    const NUMBER_MASK: usize = !(0b111 << Self::NUMBER_BITS);
+    const NUMBER_BITS: u32 = u32::BITS - 3;
+    const NUMBER_MASK: u32 = !(0b111 << Self::NUMBER_BITS);
     fn new(ty: VarType, number: usize) -> Self {
+        let number: u32 = number as u32;
         assert!(!Self::NUMBER_MASK & number == 0);
         let ty_repr = match ty {
             VarType::Inst => 0b000,
@@ -178,7 +183,7 @@ impl Var {
         }
     }
     fn number(&self) -> usize {
-        self.0 & Self::NUMBER_MASK
+        (self.0 & Self::NUMBER_MASK) as usize
     }
 }
 
@@ -293,9 +298,8 @@ impl R1cs {
     /// Get the zero combination for this system.
     pub fn zero(&self) -> Lc {
         Lc {
-            modulus: self.modulus.clone(),
             constant: self.modulus.zero(),
-            monomials: HashMap::default(),
+            monomials: Default::default(),
         }
     }
     /// Get a constant constraint for this system.
@@ -303,9 +307,8 @@ impl R1cs {
     pub fn constant(&self, c: FieldV) -> Lc {
         assert_eq!(c.ty(), self.modulus);
         Lc {
-            modulus: self.modulus.clone(),
             constant: c,
-            monomials: HashMap::default(),
+            monomials: Default::default(),
         }
     }
     /// Get combination which is just the wire `s`.
@@ -315,15 +318,15 @@ impl R1cs {
             .get_rev(s)
             .expect("Missing signal in signal_lc");
         let mut lc = self.zero();
-        lc.monomials.insert(*idx, self.modulus.new_v(1));
+        lc.monomials.push((*idx, self.modulus.new_v_prim(1)));
         lc
     }
     /// Make `a * b = c` a constraint.
     pub fn constraint(&mut self, a: Lc, b: Lc, c: Lc) {
-        assert_eq!(&self.modulus, &a.modulus);
-        assert_eq!(&self.modulus, &b.modulus);
-        assert_eq!(&self.modulus, &c.modulus);
-        debug!(
+        assert_eq!(&self.modulus, &a.ty());
+        assert_eq!(&self.modulus, &b.ty());
+        assert_eq!(&self.modulus, &c.ty());
+        trace!(
             "Constraint:\n    {}\n  * {}\n  = {}",
             self.format_lc(&a),
             self.format_lc(&b),
@@ -502,6 +505,18 @@ struct BiMap<S: Hash + Eq + Clone, T: Hash + Eq + Clone> {
     rev: HashMap<T, S>,
 }
 
+impl<S: Hash + Eq + Clone + Debug + DataSize, T: Hash + Eq + Clone + Debug + DataSize> DataSize
+    for BiMap<S, T>
+{
+    const IS_DYNAMIC: bool = true;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    fn estimate_heap_size(&self) -> usize {
+        self.fwd.estimate_heap_size() + self.rev.estimate_heap_size()
+    }
+}
+
 #[allow(dead_code)]
 impl<S: Hash + Eq + Clone + Debug, T: Hash + Eq + Clone + Debug> BiMap<S, T> {
     fn new() -> Self {
@@ -565,12 +580,20 @@ pub enum SigTy {
     Challenge,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, DataSize)]
 /// A linear combination
 pub struct Lc {
-    modulus: FieldT,
     constant: FieldV,
-    monomials: HashMap<Var, FieldV>,
+    #[data_size(with = estimate_heap_size_small_vec)]
+    monomials: SmallVec<[(Var, FieldV); 1]>,
+}
+
+fn estimate_heap_size_small_vec<A: smallvec::Array>(v: &SmallVec<A>) -> usize {
+    if v.capacity() > A::size() {
+        (std::mem::size_of::<A>() / A::size()) * v.capacity()
+    } else {
+        0
+    }
 }
 
 impl Lc {
@@ -578,17 +601,21 @@ impl Lc {
     pub fn is_zero(&self) -> bool {
         self.monomials.is_empty() && self.constant.is_zero()
     }
+    /// Get the field of this combination.
+    pub fn ty(&self) -> FieldT {
+        self.constant.ty()
+    }
     /// Make this the zero combination.
     pub fn clear(&mut self) {
         self.monomials.clear();
-        self.constant = self.modulus.zero();
+        self.constant = self.ty().zero();
     }
     /// Take this linear combination, leaving zero in its place.
     pub fn take(&mut self) -> Self {
         let monomials = std::mem::take(&mut self.monomials);
-        let constant = std::mem::replace(&mut self.constant, self.modulus.zero());
+        let zero = self.ty().zero();
+        let constant = std::mem::replace(&mut self.constant, zero);
         Self {
-            modulus: self.modulus.clone(),
             constant,
             monomials,
         }
@@ -597,79 +624,122 @@ impl Lc {
     pub fn as_const(&self) -> Option<&FieldV> {
         self.monomials.is_empty().then_some(&self.constant)
     }
+    /// Remove `var` from this combination, returning its coefficient.
+    ///
+    /// Postcondition: `var` does not occur in the combination.
+    /// If `var`'s occurances summed to 0, then returns None.
+    pub fn remove(&mut self, v: &Var) -> Option<FieldV> {
+        let mut sum = self.ty().zero();
+        self.monomials.retain(|(var, val)| {
+            if var == v {
+                sum += &*val;
+                false
+            } else {
+                true
+            }
+        });
+        if sum.is_zero() {
+            None
+        } else {
+            Some(sum)
+        }
+    }
+    /// Insert a new variable and value.
+    ///
+    /// If the combination is small enough: deduplicates.
+    pub fn insert(&mut self, var: Var, val: FieldV) {
+        if self.monomials.len() < LC_SCAN_THRESH {
+            for (k, v) in &mut self.monomials {
+                if k == &var {
+                    *v += &val;
+                    return
+                }
+            }
+            self.monomials.push((var, val));
+        } else {
+            self.monomials.push((var, val));
+        }
+
+    }
 }
+
+const LC_SCAN_THRESH: usize = 4;
 
 macro_rules! arith_impl {
     ($Trait: ident, $fn: ident) => {
         paste! {
-            impl $Trait<&Lc> for Lc {
-                type Output = Self;
-                fn $fn(mut self, other: &Self) -> Self {
-                    self.[<$fn _assign>](other);
-                    self
-                }
-            }
-
-            impl [<$Trait Assign>]<&Lc> for Lc {
-                fn [<$fn _assign>](&mut self, other: &Self) {
-                    assert_eq!(&self.modulus, &other.modulus);
-                    self.constant.[<$fn _assign>](&other.constant);
-                    let tot = self.monomials.len() + other.monomials.len();
-                    if tot > self.monomials.capacity() {
-                        self.monomials.reserve(tot - self.monomials.capacity());
+                    impl $Trait<&Lc> for Lc {
+                        type Output = Self;
+                        fn $fn(mut self, other: &Self) -> Self {
+                            self.[<$fn _assign>](other);
+                            self
+                        }
                     }
-                    for (i, v) in &other.monomials {
-                        match self.monomials.entry(*i) {
-                            std::collections::hash_map::Entry::Occupied(mut e) => {
-                                e.get_mut().[<$fn _assign>](v);
-                                if e.get().is_zero() {
-                                    e.remove_entry();
-                                }
+
+                    impl [<$Trait Assign>]<&Lc> for Lc {
+                        fn [<$fn _assign>](&mut self, other: &Self) {
+                            debug_assert_eq!(self.ty(), other.ty());
+                            self.constant.[<$fn _assign>](&other.constant);
+                            let tot = self.monomials.len() + other.monomials.len();
+                            if tot > self.monomials.capacity() {
+                                self.monomials.reserve(tot - self.monomials.capacity());
                             }
-                            std::collections::hash_map::Entry::Vacant(e) => {
-                                let mut m = self.modulus.zero();
-                                m.[<$fn _assign>](v);
-                                e.insert(m);
+                            for (i, v) in &other.monomials {
+                                self.monomials.push((i.clone(), v.clone()));
+        //                        println!("mon add");
+        //                        match self.monomials.entry(*i) {
+        //                            std::collections::hash_map::Entry::Occupied(mut e) => {
+        //                                e.get_mut().[<$fn _assign>](v);
+        //                                if e.get().is_zero() {
+        //                                    println!("mon clear {:?}", i);
+        //                                    clears += 1;
+        //                                    e.remove_entry();
+        //                                }
+        //                            }
+        //                            std::collections::hash_map::Entry::Vacant(e) => {
+        //                                let mut m = self.modulus.zero();
+        //                                m.[<$fn _assign>](v);
+        //                                e.insert(m);
+        //                            }
+        //                        }
                             }
                         }
                     }
-                }
-            }
 
-            impl $Trait<&FieldV> for Lc {
-                type Output = Self;
-                fn $fn(mut self, other: &FieldV) -> Self {
-                    self.[<$fn _assign>](other);
-                    self
-                }
-            }
+                    impl $Trait<&FieldV> for Lc {
+                        type Output = Self;
+                        fn $fn(mut self, other: &FieldV) -> Self {
+                            self.[<$fn _assign>](other);
+                            self
+                        }
+                    }
 
-            impl [<$Trait Assign>]<&FieldV> for Lc {
-                fn [<$fn _assign>](&mut self, other: &FieldV) {
-                    self.constant.[<$fn _assign>](other);
-                }
-            }
+                    impl [<$Trait Assign>]<&FieldV> for Lc {
+                        fn [<$fn _assign>](&mut self, other: &FieldV) {
+                            self.constant.[<$fn _assign>](other);
+                        }
+                    }
 
-            impl [<$Trait Assign>]<FieldV> for Lc {
-                fn [<$fn _assign>](&mut self, other: FieldV) {
-                    self.[<$fn _assign>](&other);
-                }
-            }
+                    impl [<$Trait Assign>]<FieldV> for Lc {
+                        fn [<$fn _assign>](&mut self, other: FieldV) {
+                            self.[<$fn _assign>](&other);
+                        }
+                    }
 
-            impl $Trait<isize> for Lc {
-                type Output = Self;
-                fn $fn(mut self, other: isize) -> Self {
-                    self.[<$fn _assign>](other);
-                    self
-                }
-            }
+                    impl $Trait<isize> for Lc {
+                        type Output = Self;
+                        fn $fn(mut self, other: isize) -> Self {
+                            self.[<$fn _assign>](other);
+                            self
+                        }
+                    }
 
-            impl [<$Trait Assign>]<isize> for Lc {
-                fn [<$fn _assign>](&mut self, other: isize) {
-                    self.constant.[<$fn _assign>](self.modulus.new_v(other));
+                    impl [<$Trait Assign>]<isize> for Lc {
+                        fn [<$fn _assign>](&mut self, other: isize) {
+                            self.constant.[<$fn _assign>](self.ty().new_v(other));
+                        }
+                    }
                 }
-            }
-        }
     };
 }
 
@@ -679,7 +749,7 @@ impl Neg for Lc {
     type Output = Lc;
     fn neg(mut self) -> Lc {
         self.constant = -self.constant;
-        for v in &mut self.monomials.values_mut() {
+        for (_, v) in &mut self.monomials {
             *v = -v.clone();
         }
         self
@@ -709,7 +779,7 @@ impl MulAssign<&FieldV> for Lc {
         if other.is_zero() {
             self.monomials.clear();
         } else {
-            for v in &mut self.monomials.values_mut() {
+            for (_, v) in &mut self.monomials {
                 *v *= other;
             }
         }
@@ -726,7 +796,7 @@ impl Mul<isize> for Lc {
 
 impl MulAssign<isize> for Lc {
     fn mul_assign(&mut self, other: isize) {
-        self.mul_assign(self.modulus.new_v(other));
+        self.mul_assign(self.ty().new_v(other));
     }
 }
 
@@ -1031,9 +1101,12 @@ pub struct VerifierData {
     num_commitments: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, DataSize)]
 /// A linear combination with an attached prime-field term that computes its variable
-pub struct TermLc(pub Term, pub Lc);
+pub struct TermLc(
+    #[data_size(with = crate::ir::term::size::ignore)] pub Term,
+    pub Lc,
+);
 
 impl TermLc {
     /// Is this the zero combination?
@@ -1058,101 +1131,72 @@ impl TermLc {
     }
     /// Get the field type for this term & linear combination.
     pub fn field(&self) -> FieldT {
-        self.1.modulus.clone()
+        self.1.ty()
     }
 }
 
-impl std::ops::Add<&TermLc> for TermLc {
-    type Output = TermLc;
-    fn add(mut self, other: &TermLc) -> TermLc {
-        self += other;
-        self
-    }
+fn pf_add(a: Term, b: Term) -> Term {
+    term![PF_ADD; a, b]
 }
 
-impl std::ops::AddAssign<&TermLc> for TermLc {
-    fn add_assign(&mut self, other: &TermLc) {
-        self.1 += &other.1;
-        self.0 = term![PF_ADD; self.0.clone(), other.0.clone()];
-    }
+fn pf_sub(a: Term, b: Term) -> Term {
+    term![PF_ADD; a, term![PF_NEG; b]]
 }
 
-impl std::ops::Add<&FieldV> for TermLc {
-    type Output = TermLc;
-    fn add(mut self, other: &FieldV) -> TermLc {
-        self.0 = term![PF_ADD; self.0.clone(), pf_lit(other.clone())];
-        self.1 += other;
-        self
-    }
+macro_rules! arith_op_termlc {
+    ($Trait: ident, $fn: ident, $term_fn: ident) => {
+        paste! {
+            impl $Trait<&TermLc> for TermLc {
+                type Output = TermLc;
+                fn $fn(mut self, other: &TermLc) -> TermLc {
+                    self.[<$fn _assign>](other);
+                    self
+                }
+            }
+
+            impl [<$Trait Assign>]<&TermLc> for TermLc {
+                fn [<$fn _assign>](&mut self, other: &Self) {
+                    self.1.[<$fn _assign>](&other.1);
+                    self.0 = $term_fn(self.0.clone(), other.0.clone());
+                }
+            }
+
+            impl $Trait<&FieldV> for TermLc {
+                type Output = TermLc;
+                fn $fn(mut self, other: &FieldV) -> TermLc {
+                    self.0 = $term_fn(self.0.clone(), pf_lit(other.clone()));
+                    self.1.[<$fn _assign>](other);
+                    self
+                }
+            }
+
+            impl [<$Trait Assign>]<&FieldV> for TermLc {
+                fn [<$fn _assign>](&mut self, other: &FieldV) {
+                    self.0 = $term_fn(self.0.clone(), pf_lit(other.clone()));
+                    self.1.[<$fn _assign>](other);
+                }
+            }
+
+            impl $Trait<isize> for TermLc {
+                type Output = TermLc;
+                fn $fn(mut self, other: isize) -> TermLc {
+                    self.[<$fn _assign>](other);
+                    self
+                }
+            }
+
+            impl [<$Trait Assign>]<isize> for TermLc {
+                fn [<$fn _assign>](&mut self, other: isize) {
+                    self.1.[<$fn _assign>](other);
+                    self.0 = $term_fn(self.0.clone(), pf_lit(self.field().new_v(other)));
+                }
+            }
+        }
+    };
 }
 
-impl std::ops::AddAssign<&FieldV> for TermLc {
-    fn add_assign(&mut self, other: &FieldV) {
-        self.0 = term![PF_ADD; self.0.clone(), pf_lit(other.clone())];
-        self.1 += other;
-    }
-}
-
-impl std::ops::Add<isize> for TermLc {
-    type Output = TermLc;
-    fn add(mut self, other: isize) -> TermLc {
-        self += other;
-        self
-    }
-}
-
-impl std::ops::AddAssign<isize> for TermLc {
-    fn add_assign(&mut self, other: isize) {
-        self.1 += other;
-        self.0 = term![PF_ADD; self.0.clone(), pf_lit(self.field().new_v(other))];
-    }
-}
-
-impl std::ops::Sub<&TermLc> for TermLc {
-    type Output = TermLc;
-    fn sub(mut self, other: &TermLc) -> TermLc {
-        self -= other;
-        self
-    }
-}
-
-impl std::ops::SubAssign<&TermLc> for TermLc {
-    fn sub_assign(&mut self, other: &TermLc) {
-        self.1 -= &other.1;
-        self.0 = term![PF_ADD; self.0.clone(), term![PF_NEG; other.0.clone()]];
-    }
-}
-
-impl std::ops::Sub<&FieldV> for TermLc {
-    type Output = TermLc;
-    fn sub(mut self, other: &FieldV) -> TermLc {
-        self.0 = term![PF_ADD; self.0.clone(), term![PF_NEG; pf_lit(other.clone())]];
-        self.1 -= other;
-        self
-    }
-}
-
-impl std::ops::SubAssign<&FieldV> for TermLc {
-    fn sub_assign(&mut self, other: &FieldV) {
-        self.0 = term![PF_ADD; self.0.clone(), term![PF_NEG; pf_lit(other.clone())]];
-        self.1 -= other;
-    }
-}
-
-impl std::ops::Sub<isize> for TermLc {
-    type Output = TermLc;
-    fn sub(mut self, other: isize) -> TermLc {
-        self -= other;
-        self
-    }
-}
-
-impl std::ops::SubAssign<isize> for TermLc {
-    fn sub_assign(&mut self, other: isize) {
-        self.1 -= other;
-        self.0 = term![PF_ADD; self.0.clone(), term![PF_NEG; pf_lit(self.field().new_v(other))]];
-    }
-}
+arith_op_termlc! { Add, add, pf_add }
+arith_op_termlc! { Sub, sub, pf_sub }
 
 impl std::ops::Neg for TermLc {
     type Output = TermLc;
