@@ -1065,7 +1065,11 @@ impl<'cfg> ToR1cs<'cfg> {
                     let cond = self.get_bool(&c.cs()[0]).clone();
                     let t = self.get_pf(&c.cs()[1]).clone();
                     let f = self.get_pf(&c.cs()[2]).clone();
-                    self.ite(cond, t, &f)
+                    if f.1.len() > 1 + t.1.len() {
+                        self.ite(self.bool_not(&cond), f, &t)
+                    } else {
+                        self.ite(cond, t, &f)
+                    }
                 }
                 Op::PfNaryOp(o) => {
                     let args = c.cs().iter().map(|c| self.get_pf(c));

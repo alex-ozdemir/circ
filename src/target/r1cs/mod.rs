@@ -624,6 +624,10 @@ impl Lc {
     pub fn as_const(&self) -> Option<&FieldV> {
         self.monomials.is_empty().then_some(&self.constant)
     }
+    /// Get the number of monomials
+    pub fn len(&self) -> usize {
+        self.monomials.len()
+    }
     /// Remove `var` from this combination, returning its coefficient.
     ///
     /// Postcondition: `var` does not occur in the combination.
