@@ -26,7 +26,7 @@ use circ_fields::{FieldT, FieldV};
 pub use circ_hc::{Node, Table, Weak};
 use circ_opt::FieldToBv;
 use fxhash::{FxHashMap, FxHashSet};
-use log::{debug, trace};
+use log::{debug, log_enabled, trace};
 use rug::Integer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Borrow;
@@ -1301,10 +1301,12 @@ fn eval_value(vs: &mut TermMap<Value>, h: &FxHashMap<String, Value>, t: Term) ->
     trace!("Eval {} on {:?}", t.op(), args);
     let v = eval_op(t.op(), &args, h);
     trace!("=> {}", v);
-    if let Value::Bool(false) = &v {
-        trace!("term {}", t);
-        for v in extras::free_variables(t.clone()) {
-            trace!("  {} = {}", v, h.get(&v).unwrap());
+    if log_enabled!(log::Level::Trace) {
+        if let Value::Bool(false) = &v {
+            trace!("term {}", t);
+            for v in extras::free_variables(t.clone()) {
+                trace!("  {} = {}", v, h.get(&v).unwrap());
+            }
         }
     }
     vs.insert(t, v.clone());
@@ -1427,8 +1429,8 @@ pub fn eval_op(op: &Op, args: &[&Value], var_vals: &FxHashMap<String, Value>) ->
             }
         }),
         Op::PfNaryOp(o) => Value::Field({
-            let mut xs = args.iter().map(|a| a.as_pf().clone());
-            let f = xs.next().unwrap();
+            let mut xs = args.iter().map(|a| a.as_pf());
+            let f = xs.next().unwrap().clone();
             xs.fold(
                 f,
                 match o {

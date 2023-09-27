@@ -378,7 +378,11 @@ impl Ord for FieldV {
 impl PartialEq for FieldV {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.full_cow().eq(&other.full_cow())
+        if !self.is_full() && !other.is_full() {
+            self.inline_i64() == other.inline_i64()
+        } else {
+            self.full_cow().eq(&other.full_cow())
+        }
     }
 }
 
