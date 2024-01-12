@@ -9,7 +9,7 @@ do
   do
     for n in $(seq 10 14)
     do
-      for threads in 1 2 4 8
+      for threads in 1 2 4 8 16
       do
         /usr/bin/time -v ./xgcd-$lib $n $threads &> temp.out
         s_xgcd=$(cat temp.out | rg 'XGCD *time = ([0-9.]+)s' -o -r '$1')
