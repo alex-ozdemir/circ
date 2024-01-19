@@ -1,6 +1,3 @@
-analyze: analyze.R data.csv
-	Rscript $<
-
 data.csv: collect.zsh xgcd
 	time zsh $< | tee $@
 

@@ -14,7 +14,7 @@ do
         /usr/bin/time -v ./xgcd $lib $n $threads &> temp.out
         us_per_n=$(cat temp.out | rg 'total *time .*= ([0-9.]+)$' -o -r '$1')
         cpu_time=$(cat temp.out | rg 'User time' | rg '([0-9.]+)' -o)
-        real_time=$(cat temp.out | rg 'Elapsed' | rg ':([0-9.]+)' -o -r '$1')
+        real_time=$(cat temp.out | rg 'Elapsed' | rg ':([1-9][0-9]?.[0-9][0-9])' -o -r '$1')
         echo $lib,$trial,$n,$threads,$us_per_n,$cpu_time,$real_time
       done
     done

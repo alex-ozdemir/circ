@@ -1,9 +1,9 @@
 #include <cassert>
 #include <chrono>
+#include <ctime>
 #include <ostream>
 #include <stdint.h>
 #include <string>
-#include <time.h>
 #include <vector>
 
 #include <NTL/BasicThreadPool.h>
@@ -19,7 +19,7 @@
 
 void usage(char* argv[])
 {
-  std::cerr << "USAGE " << argv[0] << " (ntl-feea|flint-feea|ntl-interp) LOG2_NUM_ROOTS [NUM_THREADS]" << std::endl;
+  std::cout << "USAGE " << argv[0] << " (ntl-feea|flint-feea|ntl-interp) LOG2_NUM_ROOTS [NUM_THREADS]" << std::endl;
   exit(1);
 }
 
@@ -41,7 +41,7 @@ Mode parse_mode(char* argv[], const std::string& mode)
   } else if (mode == "ntl-interp") {
     return Mode::NtlInterp;
   } else {
-    std::cerr << "Unknown mode string " << mode << std::endl;
+    std::cout << "Unknown mode string " << mode << std::endl;
     usage(argv);
     // silence warning with dead code
     return Mode::NtlInterp;
@@ -118,20 +118,33 @@ void tree_eval(NTL::vec_ZZ_p& b, const NTL::ZZ_pX& f, const std::vector<NTL::ZZ_
   const size_t n = (ts + 1) / 2;
   assert((n & (n - 1)) == 0);
   std::vector<NTL::ZZ_pX> qs { f % tree.back() };
-  for (size_t lev_size = 2; lev_size <= n; lev_size *= 2) {
+  long threads = NTL::AvailableThreads();
+  for (size_t lev_size = 2, lev_i = 1; lev_size <= n; lev_size *= 2, lev_i++) {
+    auto begin = std::chrono::steady_clock::now();
+    auto cpu_time_before = std::clock();
     const size_t lev_start = qs.size();
     qs.resize(lev_start + lev_size);
     NTL::ZZ_pContext ctx;
     ctx.save();
     NTL_EXEC_RANGE(lev_size, first, last)
     {
+      if (lev_size <= 2 * threads)
+      {
+        NTL::SetNumThreads(threads / lev_size);
+      }
       ctx.restore();
       for (size_t i = lev_start + first; i < lev_start + last; ++i) {
         NTL::rem(qs[i], qs[(i - 1) / 2], tree[ts - i - 1]);
       }
     }
     NTL_EXEC_RANGE_END
+    auto end = std::chrono::steady_clock::now();
+    auto cpu_time_after = std::clock();
+    double us_per_pt = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3;
+    double cpu_us_per_pt = (cpu_time_after - cpu_time_before) / (double)CLOCKS_PER_SEC * 1e6 / n;
+    std::cerr << "level " << lev_i << ": " << us_per_pt << " " << cpu_us_per_pt << " " << cpu_us_per_pt / us_per_pt << std::endl;
   }
+  NTL::SetNumThreads(threads);
   b.SetLength(n);
   NTL_EXEC_RANGE(n, first, last)
   {
@@ -193,8 +206,8 @@ int main(int argc, char* argv[])
   if (argc == 4) {
     threads = std::stoi(argv[3]);
   }
-  std::cerr << " degree: " << n << std::endl;
-  std::cerr << "threads: " << threads << std::endl;
+  std::cout << " degree: " << n << std::endl;
+  std::cout << "threads: " << threads << std::endl;
 
   std::chrono::steady_clock::time_point begin, end, bbegin, eend;
   switch (mode) {
@@ -203,9 +216,35 @@ int main(int argc, char* argv[])
     NTL::ZZ p = NTL::to_ZZ("52435875175126190479447740508185965837690552500527637822603658699938581184513");
     NTL::ZZ_p::init(p);
 
-    NTL::ZZ_pX a = NTL::random_ZZ_pX(n);
-    NTL::ZZ_pX b = NTL::random_ZZ_pX(n);
-    NTL::ZZ_pX c = a * b;
+    long problems = std::atol(argv[4]);
+    std::vector<NTL::ZZ_pX> a;
+    std::vector<NTL::ZZ_pX> b;
+    std::vector<NTL::ZZ_pX> c;
+    for (long i = 0; i < problems; ++i) {
+      a.push_back(NTL::random_ZZ_pX(n));
+      b.push_back(NTL::random_ZZ_pX(n));
+    }
+    c.resize(problems);
+    auto cpu_time_before = std::clock();
+    auto real_time_before = std::chrono::steady_clock::now();
+    NTL::ZZ_pContext ctx;
+    ctx.save();
+    NTL_EXEC_RANGE(problems, first, last)
+    {
+      ctx.restore();
+      std::cout << "thread with " << (last - first) << "problems" << std::endl;
+      for (long i = first; i < last; ++i) {
+        c[i] = a[i] * b[i];
+      }
+    }
+    NTL_EXEC_RANGE_END
+    auto cpu_time_after = std::clock();
+    auto real_time_after = std::chrono::steady_clock::now();
+    double real_seconds = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(real_time_after - real_time_before).count()) / 1e9;
+    double cpu_seconds = (cpu_time_after - cpu_time_before) / (double)CLOCKS_PER_SEC;
+    std::cout << "real: " << real_seconds << std::endl;
+    std::cout << " cpu: " << cpu_seconds << std::endl;
+    std::cout << " rat: " << cpu_seconds / real_seconds << std::endl;
     break;
   }
   case Mode::FlintFeea: {
@@ -216,8 +255,8 @@ int main(int argc, char* argv[])
     fmpz_mod_ctx_t ctx;
     fmpz_mod_ctx_init(ctx, p);
 
-    std::cerr << " degree: " << n << std::endl;
-    std::cerr << "threads: " << threads << std::endl;
+    std::cout << " degree: " << n << std::endl;
+    std::cout << "threads: " << threads << std::endl;
 
     flint_rand_t rng;
     flint_randinit(rng);
@@ -233,14 +272,14 @@ int main(int argc, char* argv[])
     fmpz_mod_poly_init(f, ctx);
     fmpz_mod_poly_product_roots_fmpz_vec(f, roots, n, ctx);
     end = std::chrono::steady_clock::now();
-    std::cerr << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     fmpz_mod_poly_t df;
     fmpz_mod_poly_init(df, ctx);
     fmpz_mod_poly_derivative(df, f, ctx);
     end = std::chrono::steady_clock::now();
-    std::cerr << "deriv  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "deriv  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
     fmpz_mod_poly_t g, s, t;
     fmpz_mod_poly_init(g, ctx);
     fmpz_mod_poly_init(s, ctx);
@@ -250,11 +289,11 @@ int main(int argc, char* argv[])
     fmpz_mod_poly_xgcd(g, s, t, f, df, ctx);
     end = std::chrono::steady_clock::now();
     eend = std::chrono::steady_clock::now();
-    std::cerr << " XGCD  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
-    std::cerr << "total  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(eend - bbegin).count()) / n / 1e3 << std::endl;
+    std::cout << " XGCD  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "total  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(eend - bbegin).count()) / n / 1e3 << std::endl;
 
     if (!fmpz_mod_poly_is_one(g, ctx)) {
-      std::cerr << "non-one GCD: " << fmpz_mod_poly_get_str(g, ctx) << std::endl;
+      std::cout << "non-one GCD: " << fmpz_mod_poly_get_str(g, ctx) << std::endl;
       return 1;
     }
     break;
@@ -272,19 +311,19 @@ int main(int argc, char* argv[])
     begin = std::chrono::steady_clock::now();
     NTL::ZZ_pX f = NTL::BuildFromRoots(roots);
     end = std::chrono::steady_clock::now();
-    std::cerr << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     NTL::ZZ_pX df = NTL::diff(f);
     end = std::chrono::steady_clock::now();
-    std::cerr << "deriv  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "deriv  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     NTL::XGCD(g, s, t, f, df);
     end = std::chrono::steady_clock::now();
     eend = std::chrono::steady_clock::now();
-    std::cerr << "XGCD   time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
-    std::cerr << "total  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(eend - bbegin).count()) / n / 1e3 << std::endl;
+    std::cout << "XGCD   time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "total  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(eend - bbegin).count()) / n / 1e3 << std::endl;
     assert(g == s * f + t * df);
     break;
   }
@@ -307,19 +346,19 @@ int main(int argc, char* argv[])
     NTL::ZZ_pX f = tree.back();
     // NTL::ZZ_pX f = NTL::BuildFromRoots(roots);
     end = std::chrono::steady_clock::now();
-    std::cerr << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     NTL::ZZ_pX df = NTL::diff(f);
     end = std::chrono::steady_clock::now();
-    std::cerr << "deriv  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "deriv  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     NTL::vec_ZZ_p df_vals;
     // eval(df_vals, df, roots);
     tree_eval(df_vals, df, tree);
     end = std::chrono::steady_clock::now();
-    std::cerr << "eval   time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "eval   time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     assert(batch_inv(df_vals));
@@ -327,7 +366,7 @@ int main(int argc, char* argv[])
     //    df_vals[i] = NTL::inv(df_vals[i]);
     //  }
     end = std::chrono::steady_clock::now();
-    std::cerr << "invert time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "invert time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     for (size_t i = 0; i < n; ++i) {
@@ -336,15 +375,15 @@ int main(int argc, char* argv[])
     NTL::ZZ_pX deriv_inv;
     tree_combine(deriv_inv, df_vals, tree);
     end = std::chrono::steady_clock::now();
-    std::cerr << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     t = deriv_inv;
     assert(NTL::divide(s, 1 - df * t, f));
     end = std::chrono::steady_clock::now();
     eend = std::chrono::steady_clock::now();
-    std::cerr << "div    time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
-    std::cerr << "total  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(eend - bbegin).count()) / n / 1e3 << std::endl;
+    std::cout << "div    time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "total  time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(eend - bbegin).count()) / n / 1e3 << std::endl;
 
     g = s * f + t * df;
     assert(g == 1);
@@ -353,4 +392,3 @@ int main(int argc, char* argv[])
   }
   return 0;
 }
-

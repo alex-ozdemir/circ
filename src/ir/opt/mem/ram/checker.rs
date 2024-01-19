@@ -162,14 +162,13 @@ pub fn check_ram(c: &mut Computation, ram: Ram) {
         }
 
         // check ranges
-        assertions.push(c.outputs[0].clone());
         #[allow(clippy::type_complexity)]
         let range_checker: Box<
             dyn Fn(&mut Computation, Vec<Term>, &Namespace, &mut Vec<Term>, usize, &FieldT),
         > = if ram.cfg.split_times {
-            Box::new(&bit_split_range_check)
+            Box::new(&range_check_bits)
         } else {
-            Box::new(&range_check)
+            Box::new(&range_check_ip)
         };
         range_checker(
             c,
@@ -180,6 +179,11 @@ pub fn check_ram(c: &mut Computation, ram: Ram) {
             f,
         );
     }
+    if &AND == c.outputs[0].op() {
+        assertions.extend(c.outputs[0].cs().iter().cloned());
+    } else {
+        assertions.push(c.outputs[0].clone());
+    }
     c.outputs[0] = term(AND, assertions);
 }
 
@@ -188,7 +192,7 @@ pub fn check_ram(c: &mut Computation, ram: Ram) {
 /// Assumes that each value is a field element.
 /// Creates new variables in `c`.
 /// Emits assertions to `assertions`.
-fn range_check(
+pub fn range_check_ip(
     c: &mut Computation,
     mut values: Vec<Term>,
     ns: &Namespace,
@@ -242,7 +246,7 @@ fn range_check(
 /// Emits assertions to `assertions`.
 ///
 /// Just bit-splits them all.
-fn bit_split_range_check(
+fn range_check_bits(
     _c: &mut Computation,
     values: Vec<Term>,
     _ns: &Namespace,

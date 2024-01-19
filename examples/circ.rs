@@ -272,6 +272,9 @@ fn main() {
             // The obliv elim pass produces more tuples, that must be eliminated
             opts.push(Opt::PersistentRam);
             opts.push(Opt::VolatileRam);
+            if options.circ.ir.fits_in_bits_ip {
+                opts.push(Opt::FitsInBitsIp);
+            }
             opts.push(Opt::SkolemizeChallenges);
             opts.push(Opt::ScalarizeVars);
             opts.push(Opt::ConstantFold(Box::new([])));
