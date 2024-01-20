@@ -146,6 +146,7 @@ impl<'ast> ZVisitorMut<'ast> for ZConstLiteralRewriter {
             }
         }
 
+        // TODO(aozdemir): U32 array special-case
         // always rewrite ArrayInitializerExpression::count literals to type U32
         let to_ty = self.replace(Some(Ty::Uint(32)));
         self.visit_expression(&mut aie.count)?;
@@ -285,6 +286,7 @@ impl<'ast> ZVisitorMut<'ast> for ZConstLiteralRewriter {
         );
         self.visit_basic_or_struct_type(&mut aty.ty)?;
 
+        // TODO(aozdemir): U32 array special-case
         // always rewrite ArrayType::dimensions literals to type U32
         self.replace(Some(Ty::Uint(32)));
         aty.dimensions
@@ -296,6 +298,7 @@ impl<'ast> ZVisitorMut<'ast> for ZConstLiteralRewriter {
     }
 
     fn visit_explicit_generics(&mut self, eg: &mut ast::ExplicitGenerics<'ast>) -> ZVisitorResult {
+        // TODO(aozdemir): U32 const generic special-case
         // always rewrite ConstantGenericValue literals to type U32
         let to_ty = self.replace(Some(Ty::Uint(32)));
         walk_explicit_generics(self, eg)?;

@@ -300,6 +300,7 @@ impl<'ast, 'ret, 'wlk> ZVisitorMut<'ast> for ZExpressionTyper<'ast, 'ret, 'wlk> 
                 at,
                 ast::Expression::Literal(ast::LiteralExpression::HexLiteral(
                     ast::HexLiteralExpression {
+                        // TODO(aozdemir): U32 array special-case
                         value: ast::HexNumberExpression::U32(ast::U32NumberExpression {
                             value: format!("{acc_len:04x}"),
                             span: iae.span,

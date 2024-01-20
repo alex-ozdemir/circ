@@ -111,6 +111,7 @@ impl<'ast, 'gen, const IS_CNST: bool> ZGenericInf<'ast, 'gen, IS_CNST> {
                 CGV::Identifier(i) => Some(self.const_id_(i)?),
             } {
                 let var = make_varname(&id.value, &self.sfx);
+                // TODO(aozdemir): U32 const generic special-case
                 let val = match v.ty {
                     Ty::Uint(32) => Ok(v.term),
                     ty => Err(format!(
@@ -330,6 +331,7 @@ impl<'ast, 'gen, const IS_CNST: bool> ZGenericInf<'ast, 'gen, IS_CNST> {
             .zip(generics.iter())
             .try_for_each::<_, Result<(), String>>(|(cgv, id)| {
                 let sgid = make_varname(&id.value, &new_sfx);
+                // TODO(aozdemir): U32 const generic special-case
                 let val = match cgv {
                     CGV::Underscore(_) => unreachable!(),
                     CGV::Value(le) => u32_term(self.zgen.literal_(le)?)?,
@@ -400,6 +402,7 @@ impl<'ast, 'gen, const IS_CNST: bool> ZGenericInf<'ast, 'gen, IS_CNST> {
         arg_dim: usize,
         def_exp: &ast::Expression<'ast>,
     ) -> Result<(), String> {
+        // TODO(aozdemir): U32 const generic special-case
         let t = u32_term(self.expr(def_exp)?)?;
         self.add_constraint(bv_lit(arg_dim, 32), t);
         Ok(())
@@ -445,6 +448,7 @@ impl<'ast, 'gen, const IS_CNST: bool> ZGenericInf<'ast, 'gen, IS_CNST> {
     }
 }
 
+// TODO(aozdemir): U32 const generic special-case
 fn u32_term(t: T) -> Result<Term, String> {
     match t.ty {
         Ty::Uint(32) => Ok(t.term),
