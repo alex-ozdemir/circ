@@ -39,17 +39,21 @@ pub fn fits_in_bits_ip(c: &mut Computation) {
             num_bits,
             field
         );
-        let (cost, k) = (0..num_bits as u32)
-            .filter_map(|k| Some((subrange_cost(terms.len(), num_bits, k)?, k)))
+        let (cost, k) = (0..=num_bits as u32)
+            .filter_map(|k| {
+                let cost = subrange_cost(terms.len(), num_bits, k)?;
+                debug!("subrange size {} => cost {}", k, cost);
+                Some((cost, k))
+            })
             .min()
             .unwrap();
         debug!("Using subranges of size {}, for cost {}", k, cost);
         if k > 0 {
+            for t in &terms {
+                substitution_cache
+                    .insert(term![Op::PfFitsInBits(num_bits); t.clone()], bool_lit(true));
+            }
             if k < num_bits as u32 {
-                for t in &terms {
-                    substitution_cache
-                        .insert(term![Op::PfFitsInBits(num_bits); t.clone()], bool_lit(true));
-                }
                 let field_bits = field.modulus().significant_bits() as usize;
                 let num_subranges = num_bits / k as usize;
                 let end_length = num_bits - num_subranges * k as usize;
@@ -105,6 +109,10 @@ pub fn fits_in_bits_ip(c: &mut Computation) {
                     upper_bound,
                     &field,
                 )
+            }
+        } else {
+            for t in terms {
+                new_assertions.push(term![Op::PfFitsInBits(num_bits); t.clone()]);
             }
         }
     }
