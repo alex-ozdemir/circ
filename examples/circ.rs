@@ -267,7 +267,7 @@ fn main() {
             opts.push(Opt::ParseCondStores);
             // Tuples must be eliminated before oblivious array elim
             opts.push(Opt::ConstantFold(Box::new([])));
-            // opts.push(Opt::Obliv);
+            opts.push(Opt::Obliv);
             // The obliv elim pass produces more tuples, that must be eliminated
             opts.push(Opt::PersistentRam);
             opts.push(Opt::VolatileRam);

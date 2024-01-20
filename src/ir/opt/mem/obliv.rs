@@ -22,6 +22,8 @@ use crate::ir::term::*;
 
 use log::trace;
 
+const OBLIV_SIZE_THRESH: usize = 8096;
+
 #[derive(Default)]
 struct OblivRewriter {
     tups: TermMap<Term>,
@@ -42,7 +44,13 @@ impl OblivRewriter {
     }
     fn visit(&mut self, t: &Term) {
         let (tup_opt, term_opt) = match t.op() {
-            Op::Const(v @ Value::Array(_)) => (Some(leaf_term(Op::Const(arr_val_to_tup(v)))), None),
+            Op::Const(v @ Value::Array(a)) => {
+                if a.size <= OBLIV_SIZE_THRESH {
+                    (Some(leaf_term(Op::Const(arr_val_to_tup(v)))), None)
+                } else {
+                    (None, None)
+                }
+            }
             Op::Array(_k, _v) => (
                 Some(term(
                     Op::Tuple,
@@ -50,10 +58,16 @@ impl OblivRewriter {
                 )),
                 None,
             ),
-            Op::Fill(_k, size) => (
-                Some(term(Op::Tuple, vec![self.get_t(&t.cs()[0]).clone(); *size])),
-                None,
-            ),
+            Op::Fill(_k, size) => {
+                if *size < OBLIV_SIZE_THRESH {
+                    (
+                        Some(term(Op::Tuple, vec![self.get_t(&t.cs()[0]).clone(); *size])),
+                        None,
+                    )
+                } else {
+                    (None, None)
+                }
+            }
             Op::Store => {
                 let a = &t.cs()[0];
                 let i = &t.cs()[1];
