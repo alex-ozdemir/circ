@@ -292,6 +292,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
+name = "cachedhash"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a5158f7a62a81ff1f8d8c24ad8a4ae0b8df101176a2f84709bd67af6d6f2733"
+
+[[package]]
 name = "cc"
 version = "1.0.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -315,6 +321,7 @@ dependencies = [
  "bincode",
  "bls12_381",
  "byteorder",
+ "cachedhash",
  "circ_fields",
  "circ_hc",
  "circ_opt",
@@ -381,6 +388,7 @@ dependencies = [
 name = "circ_hc"
 version = "0.1.0"
 dependencies = [
+ "cachedhash",
  "fxhash",
  "log",
  "lru",

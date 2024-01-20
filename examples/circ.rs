@@ -180,7 +180,6 @@ fn main() {
     let options = Options::parse();
     circ::cfg::set(&options.circ);
     let path_buf = options.path.clone();
-    println!("{options:?}");
     let mode = match options.backend {
         Backend::R1cs { .. } => match options.frontend.value_threshold {
             Some(t) => Mode::ProofOfHighValue(t),
@@ -268,7 +267,7 @@ fn main() {
             opts.push(Opt::ParseCondStores);
             // Tuples must be eliminated before oblivious array elim
             opts.push(Opt::ConstantFold(Box::new([])));
-            opts.push(Opt::Obliv);
+            // opts.push(Opt::Obliv);
             // The obliv elim pass produces more tuples, that must be eliminated
             opts.push(Opt::PersistentRam);
             opts.push(Opt::VolatileRam);

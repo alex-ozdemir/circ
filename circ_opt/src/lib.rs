@@ -239,7 +239,7 @@ pub struct RamOpt {
         default_value = "uniqueness"
     )]
     pub index: IndexStrategy,
-    /// How to argue that indices are only repeated in blocks.
+    /// How to permute accesses
     #[arg(
         long = "ram-permutation",
         env = "RAM_PERMUTATION",

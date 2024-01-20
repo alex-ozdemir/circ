@@ -1,4 +1,5 @@
 // Warning: this file is generated from src/template.rs and generate_u8.zsh
+use cachedhash::CachedHash;
 use fxhash::FxHashMap as HashMap;
 
 use crate::Id;
@@ -18,7 +19,7 @@ struct NodeDataRef<'a, Q: Borrow<[Node]>>(&'a u8, &'a Q);
 
 #[derive(Clone)]
 pub struct Node {
-    data: Rc<NodeData>,
+    data: Rc<CachedHash<NodeData>>,
     id: Id,
 }
 
@@ -111,7 +112,7 @@ impl crate::Table<u8> for Table {
 }
 
 struct Manager {
-    table: RefCell<HashMap<Rc<NodeData>, Node>>,
+    table: RefCell<HashMap<Rc<CachedHash<NodeData>>, Node>>,
     /// Elements that are still in `table`, but should be collected.
     to_collect: RefCell<Vec<Weak>>,
     in_gc: Cell<bool>,
@@ -120,7 +121,7 @@ struct Manager {
     gc_hooks: RefCell<(Vec<String>, Vec<Box<dyn Fn(Id) -> Vec<Node>>>)>,
 }
 
-struct TableDebug<'a>(&'a HashMap<Rc<NodeData>, Node>);
+struct TableDebug<'a>(&'a HashMap<Rc<CachedHash<NodeData>>, Node>);
 
 impl<'a> std::fmt::Debug for TableDebug<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -155,10 +156,10 @@ thread_local! {
 impl Manager {
     fn create(&self, op: &u8, children: Vec<Node>) -> Node {
         let mut table = self.table.borrow_mut();
-        let data = Rc::new(NodeData {
+        let data = Rc::new(CachedHash::new(NodeData {
             op: op.clone(),
             cs: children.into(),
-        });
+        }));
 
         table
             .entry(data)
@@ -194,7 +195,7 @@ impl Manager {
                 let data = Rc::try_unwrap(strong_data).unwrap_or_else(|d| {
                     panic!("to many refs to {:?}", NodeListShallowDebug(&d.cs))
                 });
-                for c in data.cs.into_vec() {
+                for c in CachedHash::take_value(data).cs.into_vec() {
                     // 3 pointers: 2 from table, and this vector.
                     if Rc::strong_count(&c.data) <= 3 {
                         debug_assert_eq!(Rc::strong_count(&c.data), 3);
@@ -274,7 +275,7 @@ impl Drop for Node {
 
 #[derive(Clone)]
 pub struct Weak {
-    data: std::rc::Weak<NodeData>,
+    data: std::rc::Weak<CachedHash<NodeData>>,
     id: Id,
 }
 

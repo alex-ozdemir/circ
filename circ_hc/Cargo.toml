@@ -11,6 +11,7 @@ rc = []
 default = ["hashconsing", "lru", "raw", "rc"]
 
 [dependencies]
+cachedhash = "0.1.2"
 fxhash = "0.2.1"
 hashconsing = { git = "https://github.com/alex-ozdemir/hashconsing.git", branch = "phash", optional = true }
 log = "0.4"

@@ -2,6 +2,7 @@
 #[macro_export]
 macro_rules! generate_hashcons_rc {
     ($Op:ty) => {
+        use cachedhash::CachedHash;
         use fxhash::FxHashMap as HashMap;
 
         use log::trace;
@@ -21,7 +22,7 @@ macro_rules! generate_hashcons_rc {
 
         #[derive(Clone)]
         pub struct Node {
-            data: Rc<NodeData>,
+            data: Rc<CachedHash<NodeData>>,
             id: Id,
         }
 
@@ -114,7 +115,7 @@ macro_rules! generate_hashcons_rc {
         }
 
         struct Manager {
-            table: RefCell<HashMap<Rc<NodeData>, Node>>,
+            table: RefCell<HashMap<Rc<CachedHash<NodeData>>, Node>>,
             /// Elements that are still in `table`, but should be collected.
             to_collect: RefCell<Vec<Weak>>,
             in_gc: Cell<bool>,
@@ -123,7 +124,7 @@ macro_rules! generate_hashcons_rc {
             gc_hooks: RefCell<(Vec<String>, Vec<Box<dyn Fn(Id) -> Vec<Node>>>)>,
         }
 
-        struct TableDebug<'a>(&'a HashMap<Rc<NodeData>, Node>);
+        struct TableDebug<'a>(&'a HashMap<Rc<CachedHash<NodeData>>, Node>);
 
         impl<'a> std::fmt::Debug for TableDebug<'a> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -158,10 +159,10 @@ macro_rules! generate_hashcons_rc {
         impl Manager {
             fn create(&self, op: &$Op, children: Vec<Node>) -> Node {
                 let mut table = self.table.borrow_mut();
-                let data = Rc::new(NodeData {
+                let data = Rc::new(CachedHash::new(NodeData {
                     op: op.clone(),
                     cs: children.into(),
-                });
+                }));
 
                 table
                     .entry(data)
@@ -197,7 +198,7 @@ macro_rules! generate_hashcons_rc {
                         let data = Rc::try_unwrap(strong_data).unwrap_or_else(|d| {
                             panic!("to many refs to {:?}", NodeListShallowDebug(&d.cs))
                         });
-                        for c in data.cs.into_vec() {
+                        for c in CachedHash::take_value(data).cs.into_vec() {
                             // 3 pointers: 2 from table, and this vector.
                             if Rc::strong_count(&c.data) <= 3 {
                                 debug_assert_eq!(Rc::strong_count(&c.data), 3);
@@ -277,7 +278,7 @@ macro_rules! generate_hashcons_rc {
 
         #[derive(Clone)]
         pub struct Weak {
-            data: std::rc::Weak<NodeData>,
+            data: std::rc::Weak<CachedHash<NodeData>>,
             id: Id,
         }
 

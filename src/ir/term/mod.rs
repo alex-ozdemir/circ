@@ -1040,6 +1040,13 @@ thread_local! {
     static LAST_LEN: Cell<usize> = Default::default();
 }
 
+
+
+/// Size of the term table.
+pub fn table_size() -> usize {
+    hc::Table::table_size()
+}
+
 fn should_collect() -> bool {
     let last_len = LAST_LEN.with(|l| l.get());
     let ret = LEN_THRESH_DEN * hc::Table::table_size() > LEN_THRESH_NUM * last_len;
