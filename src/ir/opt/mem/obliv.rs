@@ -75,7 +75,7 @@ impl OblivRewriter {
                 (
                     if let Some(aa) = self.tups.get(a) {
                         if suitable_const(i) {
-                            trace!("simplify store {}", i);
+                            trace!("simplify store at {}", i);
                             Some(term![Op::Update(get_const(i)); aa.clone(), self.get_t(v).clone()])
                         } else {
                             None
@@ -91,7 +91,7 @@ impl OblivRewriter {
                 let i = &t.cs()[1];
                 if let Some(aa) = self.tups.get(a) {
                     if suitable_const(i) {
-                        trace!("simplify select {}", i);
+                        trace!("simplify select at {}", i);
                         let tt = term![Op::Field(get_const(i)); aa.clone()];
                         (
                             Some(tt.clone()),
@@ -134,17 +134,10 @@ impl OblivRewriter {
                 )
             }
             Op::Tuple => (
-                if t.cs().iter().all(|c| self.tups.contains_key(c)) {
-                    Some(term(
-                        Op::Tuple,
-                        t.cs()
-                            .iter()
-                            .map(|c| self.tups.get(c).unwrap().clone())
-                            .collect(),
-                    ))
-                } else {
-                    None
-                },
+                Some(term(
+                    Op::Tuple,
+                    t.cs().iter().map(|c| self.get_t(c)).cloned().collect(),
+                )),
                 None,
             ),
             Op::Field(i) => (

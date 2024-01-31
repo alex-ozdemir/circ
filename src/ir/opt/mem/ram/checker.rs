@@ -10,7 +10,6 @@ mod permutation;
 
 /// Check a RAM
 pub fn check_ram(c: &mut Computation, ram: Ram) {
-    let size = table_size();
     debug!(
         "Checking {} {}, size {}, {} accesses, keys {}, values {}",
         if ram.cfg.covering_rom {
@@ -186,7 +185,6 @@ pub fn check_ram(c: &mut Computation, ram: Ram) {
         assertions.push(c.outputs[0].clone());
     }
     c.outputs[0] = term(AND, assertions);
-    println!("Table size: {} -> {}", size, table_size());
 }
 
 /// Ensure that each element of `values` is in `[0, n)`.
