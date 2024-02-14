@@ -1,0 +1,15 @@
+(computations
+ (main
+  (computation
+   (metadata
+    (parties prover verifier)
+    (inputs (return (bv 8)) (x (bv 8) (party 0)))
+    (commitments))
+   (precompute
+    ()
+    ((return (bv 8)))
+    (declare ((x (bv 8))) (tuple (bvadd (bvadd x x) x))))
+   (declare
+    ((return (bv 8)) (x (bv 8)))
+    (= (bvadd (bvadd x x) x) return)))))
+

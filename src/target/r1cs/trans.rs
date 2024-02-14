@@ -428,13 +428,13 @@ impl<'cfg> ToR1cs<'cfg> {
                 self.profile_start_term(c.clone());
                 match check(&c) {
                     Sort::Bool => {
-                        self.embed_bool(c);
+                        self.embed_bool(c.clone());
                     }
                     Sort::BitVector(_) => {
-                        self.embed_bv(c);
+                        self.embed_bv(c.clone());
                     }
                     Sort::Field(_) => {
-                        self.embed_pf(c);
+                        self.embed_pf(c.clone());
                     }
                     Sort::Tuple(_) => {
                         // custom ops?
@@ -443,6 +443,7 @@ impl<'cfg> ToR1cs<'cfg> {
                     s => panic!("Unsupported sort in embed: {:?}", s),
                 }
                 self.profile_end_term();
+                self.embed.borrow_mut().insert(c);
             }
         }
     }

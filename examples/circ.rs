@@ -28,7 +28,7 @@ use circ::ir::{
     opt::{opt, Opt},
     term::{
         check,
-        text::{parse_value_map, serialize_value_map},
+        text::{parse_computations, parse_value_map, serialize_value_map},
     },
 };
 #[cfg(feature = "aby")]
@@ -120,6 +120,7 @@ enum Language {
     Zsharp,
     Datalog,
     C,
+    CircIr,
     Auto,
 }
 
@@ -127,6 +128,7 @@ enum Language {
 pub enum DeterminedLanguage {
     Zsharp,
     Datalog,
+    CircIr,
     C,
 }
 
@@ -154,6 +156,7 @@ fn determine_language(l: &Language, input_path: &Path) -> DeterminedLanguage {
     match *l {
         Language::Datalog => DeterminedLanguage::Datalog,
         Language::Zsharp => DeterminedLanguage::Zsharp,
+        Language::CircIr => DeterminedLanguage::CircIr,
         Language::C => DeterminedLanguage::C,
         Language::Auto => {
             let p = input_path.to_str().unwrap();
@@ -161,6 +164,8 @@ fn determine_language(l: &Language, input_path: &Path) -> DeterminedLanguage {
                 DeterminedLanguage::Zsharp
             } else if p.ends_with(".pl") {
                 DeterminedLanguage::Datalog
+            } else if p.ends_with(".circir") {
+                DeterminedLanguage::CircIr
             } else if p.ends_with(".c") || p.ends_with(".cpp") || p.ends_with(".cc") {
                 DeterminedLanguage::C
             } else {
@@ -198,6 +203,9 @@ fn main() {
                 mode,
             };
             ZSharpFE::gen(inputs)
+        }
+        DeterminedLanguage::CircIr => {
+            parse_computations(&std::fs::read(&options.path).unwrap())
         }
         #[cfg(not(all(feature = "smt", feature = "zok")))]
         DeterminedLanguage::Zsharp => {

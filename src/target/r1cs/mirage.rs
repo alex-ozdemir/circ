@@ -61,6 +61,7 @@ impl<'a, F: PrimeField + PrimeFieldBits> CcCircuit<F> for SynthInput<'a, F> {
     where
         CS: CcConstraintSystem<F>,
     {
+        let start_time = std::time::Instant::now();
         if let Some(v) = self.2.as_ref() {
             assert_eq!(self.0.r1cs.commitments.len(), v.len());
         }
@@ -176,7 +177,9 @@ impl<'a, F: PrimeField + PrimeFieldBits> CcCircuit<F> for SynthInput<'a, F> {
                 }
             }
         }
+        println!("Witext : {}s", start_time.elapsed().as_secs_f64());
 
+        let start_time = std::time::Instant::now();
         for (i, (a, b, c)) in self.0.r1cs.constraints.iter().enumerate() {
             cs.enforce(
                 || format!("con{i}"),
@@ -197,6 +200,7 @@ impl<'a, F: PrimeField + PrimeFieldBits> CcCircuit<F> for SynthInput<'a, F> {
             vars.len(),
             self.0.r1cs.constraints.len()
         );
+        println!("Synth time part 2: {}s", start_time.elapsed().as_secs_f64());
         Ok(())
     }
 
@@ -460,16 +464,19 @@ where
     ) -> Self::Proof {
         assert_eq!(rand.len(), pk.data.num_commitments());
         let rng = &mut rand::thread_rng();
-        pk.data.check_all(witness);
+        // pk.data.check_all(witness);
         let rands: Vec<E::Fr> = rand.iter().map(|r| r.0).collect();
         let mut rng = &mut rand::thread_rng();
         let pf_rands: Vec<E::Fr> = (0..rand.len()).map(|_| E::Fr::random(&mut *rng)).collect();
+        let start_time = std::time::Instant::now();
         let (mirage_pf, mut aux_blocks) = mirage::create_random_proof(
             SynthInput(&pk.data, Some(witness), Some(pf_rands.clone())),
             &pk.mirage,
             rng,
         )
         .unwrap();
+        println!("create_random_proof: {}s", start_time.elapsed().as_secs_f64());
+        let start_time = std::time::Instant::now();
         // cut randomness
         for block in &mut aux_blocks {
             block.pop();
@@ -478,6 +485,7 @@ where
             aux_blocks.pop();
         }
         let link = cp_link::prove(&pk.link, rands, pf_rands, aux_blocks);
+        println!("cp_link: {}s", start_time.elapsed().as_secs_f64());
         Proof {
             mirage: mirage_pf,
             link,

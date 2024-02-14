@@ -6,6 +6,7 @@ use std::path::Path;
 
 use bincode::{deserialize_from, serialize_into};
 use fxhash::FxHashMap as HashMap;
+use log::debug;
 use serde::{Deserialize, Serialize};
 
 use super::{ProverData, VerifierData};
@@ -51,7 +52,9 @@ pub trait ProofSystem {
         pk_path: impl AsRef<Path>,
         vk_path: impl AsRef<Path>,
     ) -> std::io::Result<()> {
+        let start_time = std::time::Instant::now();
         let (pk, vk) = Self::setup(p_data, v_data);
+        debug!("Setup time: {}s", start_time.elapsed().as_secs_f64());
         serialize_into_file(&pk, pk_path)?;
         serialize_into_file(&vk, vk_path)?;
         Ok(())
@@ -64,8 +67,13 @@ pub trait ProofSystem {
     ) -> std::io::Result<()> {
         let pk: Self::ProvingKey = deserialize_from_file(pk_path)?;
         let witness = value_map_from_path(witness_path)?;
+        let start_time = std::time::Instant::now();
         let pf = Self::prove(&pk, &witness);
-        serialize_into_file(&pf, pf_path)
+        debug!("Prove time: {}s", start_time.elapsed().as_secs_f64());
+        serialize_into_file(&pf, pf_path.as_ref())?;
+        let bytes = std::fs::File::open(pf_path)?.metadata()?.len();
+        debug!("Proof size: {}B", bytes);
+        Ok(())
     }
     /// Verify from files
     fn verify_fs(
@@ -76,7 +84,10 @@ pub trait ProofSystem {
         let instance = value_map_from_path(&instance_path)?;
         let vk: Self::VerifyingKey = deserialize_from_file(vk_path)?;
         let pf: Self::Proof = deserialize_from_file(pf_path)?;
-        Ok(Self::verify(&vk, &instance, &pf))
+        let start_time = std::time::Instant::now();
+        let r = Self::verify(&vk, &instance, &pf);
+        debug!("Verify time: {}s", start_time.elapsed().as_secs_f64());
+        Ok(r)
     }
 }
 
@@ -120,7 +131,9 @@ pub trait CommitProofSystem {
         pk_path: impl AsRef<Path>,
         vk_path: impl AsRef<Path>,
     ) -> std::io::Result<()> {
+        let start_time = std::time::Instant::now();
         let (pk, vk) = Self::cp_setup(p_data, v_data);
+        debug!("Setup time: {}s", start_time.elapsed().as_secs_f64());
         serialize_into_file(&pk, pk_path)?;
         serialize_into_file(&vk, vk_path)?;
         Ok(())
@@ -138,8 +151,13 @@ pub trait CommitProofSystem {
         for p in rand_paths {
             rands.push(deserialize_from_file(p)?);
         }
+        let start_time = std::time::Instant::now();
         let pf = Self::cp_prove(&pk, &witness, &rands);
-        serialize_into_file(&pf, pf_path)
+        debug!("Prove time: {}s", start_time.elapsed().as_secs_f64());
+        serialize_into_file(&pf, pf_path.as_ref())?;
+        let bytes = std::fs::File::open(pf_path)?.metadata()?.len();
+        debug!("Proof size: {}B", bytes);
+        Ok(())
     }
     /// Verify from files
     fn cp_verify_fs(
@@ -155,7 +173,10 @@ pub trait CommitProofSystem {
         for p in cmt_paths {
             cmts.push(deserialize_from_file(p)?);
         }
-        Ok(Self::cp_verify(&vk, &instance, &pf, &cmts))
+        let start_time = std::time::Instant::now();
+        let r = Self::cp_verify(&vk, &instance, &pf, &cmts);
+        debug!("Verify time: {}s", start_time.elapsed().as_secs_f64());
+        Ok(r)
     }
     /// Commitment. The data should be a field-to-field array.
     fn cp_commit_fs(
@@ -169,7 +190,9 @@ pub trait CommitProofSystem {
         assert_eq!(1, data_map.len());
         let data = data_map.into_iter().next().unwrap().1;
         let rand: Self::ComRand = deserialize_from_file(rand_path)?;
+        let start_time = std::time::Instant::now();
         let cmt = Self::cp_commit(&vk, data, &rand);
+        debug!("Commit time: {}s", start_time.elapsed().as_secs_f64());
         serialize_into_file(&cmt, cmt_path)
     }
     /// Sample commitment randomness.

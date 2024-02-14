@@ -84,6 +84,9 @@ pub fn opt<I: IntoIterator<Item = Opt>>(mut cs: Computations, optimizations: I) 
                         .iter()
                         .map(|a| cfold::fold_cache(a, &mut cache, &ignore.clone()))
                         .collect();
+                    for p in &mut c.persistent_arrays {
+                        p.1 = cfold::fold_cache(&p.1, &mut cache, &ignore.clone());
+                    }
                 }
                 Opt::Sha => {
                     for a in &mut c.outputs {
@@ -144,7 +147,7 @@ pub fn opt<I: IntoIterator<Item = Opt>>(mut cs: Computations, optimizations: I) 
                 }
             }
             debug!("After {:?}: {} outputs", i, c.outputs.len());
-            trace!("After {:?}: {}", i, c.outputs[0]);
+            trace!("After {:?}: {}", i, text::serialize_computation(&c));
             //debug!("After {:?}: {}", i, Letified(cs.outputs[0].clone()));
             debug!("After {:?}: {} terms", i, c.terms());
         }

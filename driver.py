@@ -128,6 +128,9 @@ def test(features, extra_args):
     if "r1cs" in features and "smt" in features and "datalog" in features:
         log_run_check(["./scripts/test_datalog.zsh"])
 
+    if "r1cs" in features:
+        log_run_check(["./scripts/circir_test.zsh"])
+
     if "zok" in features and "smt" in features:
         if "aby" in features:
             log_run_check(

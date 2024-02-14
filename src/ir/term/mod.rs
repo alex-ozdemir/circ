@@ -27,11 +27,11 @@ pub use circ_hc::{Node, Table, Weak};
 use circ_opt::FieldToBv;
 use fxhash::{FxHashMap, FxHashSet};
 use log::{debug, trace};
+use im::OrdMap;
 use rug::Integer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Borrow;
 use std::cell::Cell;
-use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 pub mod bv;
@@ -698,7 +698,7 @@ pub struct Array {
     /// Default (fill) value. What is stored when a key is missing from the next member
     pub default: Box<Value>,
     /// Key-> Value map
-    pub map: BTreeMap<Value, Value>,
+    pub map: OrdMap<Value, Value>,
     /// Size of array. There are this many valid keys.
     pub size: usize,
 }
@@ -708,7 +708,7 @@ impl Array {
     pub fn new(
         key_sort: Sort,
         default: Box<Value>,
-        map: BTreeMap<Value, Value>,
+        map: OrdMap<Value, Value>,
         size: usize,
     ) -> Self {
         if key_sort.default_value().as_usize().is_none() {

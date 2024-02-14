@@ -72,7 +72,7 @@ pub fn fits_in_bits_ip(c: &mut Computation) {
                             Some(term![Op::UbvToPf(field.clone()); sub_bv]),
                         );
                         pf_summands.push(
-                        term![PF_MUL.clone(); pf_lit(field.new_v(1 << k as usize * ii)), sub_f.clone()],
+                        term![PF_MUL.clone(); pf_lit(field.new_v(1).pow(k as u64 * ii as u64)), sub_f.clone()],
                     );
                         subterms.push(sub_f);
                     }
