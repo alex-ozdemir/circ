@@ -163,7 +163,9 @@ impl<'a, F: PrimeField + PrimeFieldBits> CcCircuit<F> for SynthInput<'a, F> {
                                     || Ok(self.2.as_ref().unwrap()[cwit_randomness_vars.len()]),
                                 )?;
                                 cwit_randomness_vars.push(rand_var);
+                                let aux_start = std::time::Instant::now();
                                 cs.end_aux_block(|| format!("commit {}", num_cwits.len()))?;
+                                println!("Aux block time: {}ns", aux_start.elapsed().as_nanos());
                             } else {
                                 break;
                             }
@@ -174,7 +176,9 @@ impl<'a, F: PrimeField + PrimeFieldBits> CcCircuit<F> for SynthInput<'a, F> {
                 vars.insert(var, v);
                 var_idx += 1;
                 if j + 1 == num_vars && num_challs > 0 {
+                    let aux_start = std::time::Instant::now();
                     cs.end_aux_block(|| format!("block {}", i - 1))?;
+                    println!("Aux block time: {}ns", aux_start.elapsed().as_nanos());
                 }
             }
         }
