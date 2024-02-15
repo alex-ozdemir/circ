@@ -61,7 +61,8 @@ impl<'a, F: PrimeField + PrimeFieldBits> CcCircuit<F> for SynthInput<'a, F> {
     where
         CS: CcConstraintSystem<F>,
     {
-        let start_time = std::time::Instant::now();
+        let synth_start = std::time::Instant::now();
+        let witext_start = std::time::Instant::now();
         if let Some(v) = self.2.as_ref() {
             assert_eq!(self.0.r1cs.commitments.len(), v.len());
         }
@@ -177,9 +178,8 @@ impl<'a, F: PrimeField + PrimeFieldBits> CcCircuit<F> for SynthInput<'a, F> {
                 }
             }
         }
-        println!("Witext : {}s", start_time.elapsed().as_secs_f64());
+        println!("Witext time: {}s", witext_start.elapsed().as_secs_f64());
 
-        let start_time = std::time::Instant::now();
         for (i, (a, b, c)) in self.0.r1cs.constraints.iter().enumerate() {
             cs.enforce(
                 || format!("con{i}"),
@@ -200,7 +200,7 @@ impl<'a, F: PrimeField + PrimeFieldBits> CcCircuit<F> for SynthInput<'a, F> {
             vars.len(),
             self.0.r1cs.constraints.len()
         );
-        println!("Synth time part 2: {}s", start_time.elapsed().as_secs_f64());
+        println!("Synth time: {}s", synth_start.elapsed().as_secs_f64());
         Ok(())
     }
 
