@@ -1,4 +1,4 @@
-use super::super::hash::{MsHasher, UniversalHasher};
+use crate::ir::opt::util::hash::{MsHasher, UniversalHasher};
 use crate::ir::opt::mem::ram::{Access, AccessCfg, Order};
 use crate::ir::term::*;
 use crate::util::ns::Namespace;

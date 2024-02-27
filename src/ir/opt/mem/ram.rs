@@ -10,14 +10,14 @@ use std::collections::VecDeque;
 
 use crate::ir::opt::visit::RewritePass;
 use crate::ir::term::*;
+use crate::ir::opt::util::hash::UniversalHasher;
 use circ_fields::FieldT;
 use circ_opt::RamOpt;
 
 mod checker;
-mod hash;
 pub mod persistent;
 pub mod volatile;
-pub use checker::range_check_ip;
+pub use checker::{range_check_ip, haboeck_range_check};
 
 #[derive(Debug)]
 /// An access to a RAM
@@ -430,7 +430,7 @@ impl Access {
         &self,
         c: &AccessCfg,
         val_sort: &Sort,
-        hasher: &hash::UniversalHasher,
+        hasher: &UniversalHasher,
     ) -> (Term, Term) {
         assert_eq!(hasher.len(), c.len(val_sort));
         let mut val_elems = Vec::new();

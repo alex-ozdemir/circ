@@ -11,6 +11,7 @@ pub mod mem;
 pub mod scalarize_vars;
 pub mod sha;
 pub mod tuple;
+mod util;
 mod visit;
 
 use super::term::*;

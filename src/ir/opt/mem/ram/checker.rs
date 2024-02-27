@@ -1,5 +1,6 @@
 //! RAM checking
-use super::hash::MsHasher;
+use crate::ir::opt::util::hash::MsHasher;
+use crate::ir::opt::util::haboeck;
 use super::*;
 use crate::front::PROVER_VIS;
 use crate::util::ns::Namespace;
@@ -237,6 +238,21 @@ pub fn range_check_ip(
     let end = pf_lit(f.new_v(n - 1));
     assertions.push(term![EQ; sorted[0].clone(), zero]);
     assertions.push(term![EQ; sorted.last().unwrap().clone(), end]);
+}
+
+/// Haboeck range check
+pub fn haboeck_range_check(
+    c: &mut Computation,
+    values: Vec<Term>,
+    ns: &Namespace,
+    assertions: &mut Vec<Term>,
+    n: usize,
+    f: &FieldT,
+) {
+    let ns = ns.subspace("range");
+    let f_sort = Sort::Field(f.clone());
+    let haystack: Vec<Term> = f_sort.elems_iter().take(n).collect();
+    assertions.push(haboeck::lookup(c, ns, haystack, values));
 }
 
 /// Ensure that each element of `values` is in `[0, n)`.

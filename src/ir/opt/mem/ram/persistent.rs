@@ -3,6 +3,7 @@
 use super::super::super::visit::RewritePass;
 use super::*;
 use crate::front::PROVER_VIS;
+use crate::ir::opt::util::hash::MsHasher;
 use log::debug;
 
 /// Extract any persistent arrays from a computation, eand emit checks.
@@ -180,7 +181,7 @@ pub fn check_ram(c: &mut Computation, mut ram: Ram, cfg: &AccessCfg) {
     ms_hash_inputs.extend(init_read_hashes.iter().cloned());
     ms_hash_inputs.extend(fin_write_hashes.iter().cloned());
     ms_hash_inputs.extend(unused_hashes.iter().cloned());
-    let msh = super::hash::MsHasher::new(format!("__pers{j}_ms_hash_key"), field, ms_hash_inputs);
+    let msh = MsHasher::new(format!("__pers{j}_ms_hash_key"), field, ms_hash_inputs);
     // share ms_hash(unused_hashes)
     let ms_hash_unused = msh.hash(unused_hashes);
     let init_perm = term![EQ; msh.hash(init_hashes), term![PF_MUL; msh.hash(init_read_hashes), ms_hash_unused.clone()]];

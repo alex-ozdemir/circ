@@ -99,6 +99,13 @@ Options:
           [default: false]
           [possible values: true, false]
 
+      --ir-fits-in-bits-haboeck <FITS_IN_BITS_HABOECK>
+          Use Haboeck's IP to check bit-constraints (requires --ir-fits-in-bits-ip)
+          
+          [env: IR_FITS_IN_BITS_HABOECK=]
+          [default: false]
+          [possible values: true, false]
+
       --ram <ENABLED>
           Whether to use advanced RAM techniques
           
@@ -127,7 +134,7 @@ Options:
           - uniqueness: Use the GCD-derivative uniqueness argument
 
       --ram-permutation <PERMUTATION>
-          How to argue that indices are only repeated in blocks
+          How to permute accesses
           
           [env: RAM_PERMUTATION=]
           [default: msh]
@@ -211,6 +218,8 @@ Options:
           Garbage collection after each optimization pass [env: IR_FREQUENT_GC=] [default: false] [possible values: true, false]
       --ir-fits-in-bits-ip <FITS_IN_BITS_IP>
           Use an IP to check bit-constraints [env: IR_FITS_IN_BITS_IP=] [default: false] [possible values: true, false]
+      --ir-fits-in-bits-haboeck <FITS_IN_BITS_HABOECK>
+          Use Haboeck's IP to check bit-constraints (requires --ir-fits-in-bits-ip) [env: IR_FITS_IN_BITS_HABOECK=] [default: false] [possible values: true, false]
       --ram <ENABLED>
           Whether to use advanced RAM techniques [env: RAM=] [default: false] [possible values: true, false]
       --ram-range <RANGE>
@@ -218,7 +227,7 @@ Options:
       --ram-index <INDEX>
           How to argue that indices are only repeated in blocks [env: RAM_INDEX=] [default: uniqueness] [possible values: sort, uniqueness]
       --ram-permutation <PERMUTATION>
-          How to argue that indices are only repeated in blocks [env: RAM_PERMUTATION=] [default: msh] [possible values: waksman, msh]
+          How to permute accesses [env: RAM_PERMUTATION=] [default: msh] [possible values: waksman, msh]
       --fmt-use-default-field <USE_DEFAULT_FIELD>
           Which field to use [env: FMT_USE_DEFAULT_FIELD=] [default: true] [possible values: true, false]
       --fmt-hide-field <HIDE_FIELD>
@@ -257,6 +266,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -303,6 +313,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -347,6 +358,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -391,6 +403,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -435,6 +448,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -479,6 +493,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -523,6 +538,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -567,6 +583,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -614,6 +631,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -659,6 +677,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -706,6 +725,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -751,6 +771,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -798,6 +819,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,
@@ -843,6 +865,7 @@ BinaryOpt {
             field_to_bv: Wrap,
             frequent_gc: false,
             fits_in_bits_ip: false,
+            fits_in_bits_haboeck: false,
         },
         ram: RamOpt {
             enabled: false,

@@ -1,8 +1,9 @@
 //! Replace [Op::PfFitsInBits] with an interactive protocol.
 
-use super::mem::ram::range_check_ip;
+use super::mem::ram::{range_check_ip, haboeck_range_check};
 use crate::ir::term::*;
 use crate::util::ns::Namespace;
+use crate::cfg;
 use circ_fields::FieldT;
 use fxhash::FxHashMap as HashMap;
 use log::debug;
@@ -28,6 +29,14 @@ pub fn fits_in_bits_ip(c: &mut Computation) {
     if constraints.is_empty() {
         return;
     }
+    #[allow(clippy::type_complexity)]
+    let primitive_range_check: Box<
+        dyn Fn(&mut Computation, Vec<Term>, &Namespace, &mut Vec<Term>, usize, &FieldT),
+    > = if cfg::cfg().ir.fits_in_bits_haboeck {
+        Box::new(&haboeck_range_check)
+    } else {
+        Box::new(&range_check_ip)
+    };
     let mut new_assertions = Vec::new();
     let ns = Namespace::default();
     let mut substitution_cache = TermMap::default();
@@ -91,7 +100,7 @@ pub fn fits_in_bits_ip(c: &mut Computation) {
                     new_assertions.push(term![EQ; t, term(PF_ADD.clone(), pf_summands)]);
                 }
                 let upper_bound = 1usize.checked_shl(k).unwrap();
-                range_check_ip(
+                primitive_range_check(
                     c,
                     subterms,
                     &ns.subspace("range"),
@@ -101,7 +110,7 @@ pub fn fits_in_bits_ip(c: &mut Computation) {
                 )
             } else {
                 let upper_bound = 1usize.checked_shl(k).unwrap();
-                range_check_ip(
+                primitive_range_check(
                     c,
                     terms,
                     &ns.subspace("range"),

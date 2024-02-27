@@ -194,6 +194,14 @@ pub struct IrOpt {
         default_value = "false"
     )]
     pub fits_in_bits_ip: bool,
+    /// Use Haboeck's IP to check bit-constraints (requires --ir-fits-in-bits-ip)
+    #[arg(
+        long = "ir-fits-in-bits-haboeck",
+        env = "IR_FITS_IN_BITS_HABOECK",
+        action = ArgAction::Set,
+        default_value = "false"
+    )]
+    pub fits_in_bits_haboeck: bool,
 }
 
 #[derive(ValueEnum, Debug, PartialEq, Eq, Clone, Copy)]
