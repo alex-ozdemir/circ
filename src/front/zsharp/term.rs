@@ -780,6 +780,10 @@ pub fn array_store(array: T, idx: T, val: T) -> Result<T, String> {
             array.ty,
             term![Op::Store; array.term, iterm, val.term],
         ))
+    } else if matches!(&array.ty, Ty::MutArray(_)) {
+        let i = coerce_to_field(idx).map_err(|s| format!("{s}: mutable array index"))?;
+        let v = coerce_to_field(val).map_err(|s| format!("{s}: mutable array value"))?;
+        Ok(T::new(array.ty, term![Op::Store; array.term, i, v]))
     } else {
         Err(format!("Cannot index {} using {}", &array.ty, &idx.ty))
     }
