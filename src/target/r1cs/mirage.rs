@@ -1,6 +1,7 @@
 //! Exporting our R1CS to field1ield1ellman
 #![allow(unused)]
 use ::bellman::{
+    LinearCombination,
     cc::{CcCircuit, CcConstraintSystem},
     kw15, mirage, SynthesisError,
 };
@@ -10,6 +11,7 @@ use group::GroupEncoding;
 use group::WnafGroup;
 use log::debug;
 use pairing::{Engine, MultiMillerLoop};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
@@ -183,15 +185,23 @@ impl<'a, F: PrimeField + PrimeFieldBits> CcCircuit<F> for SynthInput<'a, F> {
             }
         }
         println!("Witext time: {}s", witext_start.elapsed().as_secs_f64());
-
-        for (i, (a, b, c)) in self.0.r1cs.constraints.iter().enumerate() {
-            cs.enforce(
-                || format!("con{i}"),
-                |z| lc_to_bellman::<F, CS>(&vars, a, z),
-                |z| lc_to_bellman::<F, CS>(&vars, b, z),
-                |z| lc_to_bellman::<F, CS>(&vars, c, z),
-            );
+        let bellman_lcs: Vec<(_, _, _)> = self
+            .0
+            .r1cs
+            .constraints
+            .par_iter()
+            .map(|(a, b, c)| {
+                (
+                    lc_to_bellman::<F, CS>(&vars, a, LinearCombination::zero()),
+                    lc_to_bellman::<F, CS>(&vars, b, LinearCombination::zero()),
+                    lc_to_bellman::<F, CS>(&vars, c, LinearCombination::zero()),
+                )
+            })
+            .collect();
+        for (i, (a, b, c)) in bellman_lcs.into_iter().enumerate() {
+            cs.enforce(|| format!("con{i}"), |_| a, |_| b, |_| c);
         }
+
         let one = CS::one();
         cs.enforce(
             || "rand_vars_dummy".to_string(),
