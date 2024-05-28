@@ -128,10 +128,6 @@ void tree_eval(NTL::vec_ZZ_p& b, const NTL::ZZ_pX& f, const std::vector<NTL::ZZ_
     ctx.save();
     NTL_EXEC_RANGE(lev_size, first, last)
     {
-      if (lev_size <= 2 * threads)
-      {
-        NTL::SetNumThreads(threads / lev_size);
-      }
       ctx.restore();
       for (size_t i = lev_start + first; i < lev_start + last; ++i) {
         NTL::rem(qs[i], qs[(i - 1) / 2], tree[ts - i - 1]);
@@ -142,7 +138,7 @@ void tree_eval(NTL::vec_ZZ_p& b, const NTL::ZZ_pX& f, const std::vector<NTL::ZZ_
     auto cpu_time_after = std::clock();
     double us_per_pt = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3;
     double cpu_us_per_pt = (cpu_time_after - cpu_time_before) / (double)CLOCKS_PER_SEC * 1e6 / n;
-    std::cerr << "level " << lev_i << ": " << us_per_pt << " " << cpu_us_per_pt << " " << cpu_us_per_pt / us_per_pt << std::endl;
+    // std::cerr << "level " << lev_i << ": " << us_per_pt << " " << cpu_us_per_pt << " " << cpu_us_per_pt / us_per_pt << std::endl;
   }
   NTL::SetNumThreads(threads);
   b.SetLength(n);
@@ -272,7 +268,7 @@ int main(int argc, char* argv[])
     fmpz_mod_poly_init(f, ctx);
     fmpz_mod_poly_product_roots_fmpz_vec(f, roots, n, ctx);
     end = std::chrono::steady_clock::now();
-    std::cout << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "prod   time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     fmpz_mod_poly_t df;
@@ -311,7 +307,7 @@ int main(int argc, char* argv[])
     begin = std::chrono::steady_clock::now();
     NTL::ZZ_pX f = NTL::BuildFromRoots(roots);
     end = std::chrono::steady_clock::now();
-    std::cout << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "prod   time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     NTL::ZZ_pX df = NTL::diff(f);
@@ -346,7 +342,7 @@ int main(int argc, char* argv[])
     NTL::ZZ_pX f = tree.back();
     // NTL::ZZ_pX f = NTL::BuildFromRoots(roots);
     end = std::chrono::steady_clock::now();
-    std::cout << "interp time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
+    std::cout << "prod   time (per d) = " << static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()) / n / 1e3 << std::endl;
 
     begin = std::chrono::steady_clock::now();
     NTL::ZZ_pX df = NTL::diff(f);
