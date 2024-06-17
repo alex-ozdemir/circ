@@ -118,7 +118,6 @@ void tree_eval(NTL::vec_ZZ_p& b, const NTL::ZZ_pX& f, const std::vector<NTL::ZZ_
   const size_t n = (ts + 1) / 2;
   assert((n & (n - 1)) == 0);
   std::vector<NTL::ZZ_pX> qs { f % tree.back() };
-  long threads = NTL::AvailableThreads();
   for (size_t lev_size = 2, lev_i = 1; lev_size <= n; lev_size *= 2, lev_i++) {
     auto begin = std::chrono::steady_clock::now();
     auto cpu_time_before = std::clock();
@@ -140,7 +139,6 @@ void tree_eval(NTL::vec_ZZ_p& b, const NTL::ZZ_pX& f, const std::vector<NTL::ZZ_
     double cpu_us_per_pt = (cpu_time_after - cpu_time_before) / (double)CLOCKS_PER_SEC * 1e6 / n;
     // std::cerr << "level " << lev_i << ": " << us_per_pt << " " << cpu_us_per_pt << " " << cpu_us_per_pt / us_per_pt << std::endl;
   }
-  NTL::SetNumThreads(threads);
   b.SetLength(n);
   NTL_EXEC_RANGE(n, first, last)
   {
